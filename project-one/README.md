@@ -8,11 +8,11 @@ STATEMENT:
 ===========
 We have neither given nor received unauthorized assistance on this work.
 
-===================================================================================
+HOW TO ACCESS:
+==============
 
-How to Access:
-
-Project Description:
+PROJECT DESCRIPTION:
+====================
 
 udp_client.c ->
 
