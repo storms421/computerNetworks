@@ -16,18 +16,23 @@
 //Client Side File
 
 //Socket Commands for TCP:
-/*
-*SOCKET - Create a new communication endpoint (similar to opening a file)
-*BIND - Associate a local address with a socket
-*LISTEN - Announce willingness to accept connections; give queue size
-*ACCEPT - Passively establish an incoming connection
-*CONNECT - Actively attempt to establish a connection
-*SEND - Send some data over the connection
-*RECEIVE - Recieve some data from the connection
-*CLOSE - Release the connection
-*/
+//SOCKET - Create a new communication endpoint similar to opening a file
+//BIND - Associate a local address with a socket
+//LISTEN - Announce willingness to accept connections; give queue size
+//ACCEPT - Passively establish an incoming connection
+//CONNECT - Actively attempt to establish a connection
+//SEND - Send some data over the connection
+//RECEIVE - Recieve some data from the connection
+//CLOSE - Release the connection
 
-#define SERVER_PORT blahblahblah //Arbitrary server number
+//Function declarations
+int getHostInfo(int argc, char **argv, struct hostent **hostInfo);
+int createSocket(struct hostent **hostInfo, struct sockaddr_in channel);
+void serverConnect(int clientSocket, struct hostent **hostInfo, struct sockaddr_in channel);
+char selectFile();
+void requestFile(char *fileName, int clientSocket, char **argv, int bytes, char *buffer);
+
+#define SERVER_PORT 12345 //Arbitrary server number
 #define BUF_SIZE 4096 //Block transfer size
 
 int main(int argc, char** argv) {
@@ -40,21 +45,30 @@ int main(int argc, char** argv) {
 	int clientSocket;
 	char fileName[100];
 	
-	getHostInfo()
-	clientSocket = createSocket(*hostInfo, *channel);
-	serverConnect(clientSocket, *hostInfo, *channel);
+	getHostInfo(argc, argv, &hostInfo);
+	clientSocket = createSocket(&hostInfo, channel);
+	serverConnect(clientSocket, &hostInfo, channel);
 	fileName = selectFile();
-	requestFile(*fileName, clientSocket **argv, bytes, *buffer);	
+	requestFile(fileName, clientSocket, argv, bytes, buffer);	
 	
 }//main
 
 //Function to get the host info
-void getHostInfo() {
-
-}//getHostInfo
+int getHostInfo(int argc, char **argv, struct hostent **hostInfo) {
+	//Make sure the correct number of arguments was inputted
+	if (argc != 3) {
+		perror("Usage: client server-name file-name");
+	}
+	//Get the host information
+	hostInfo = gethostbyname(argv[1]);
+	if(!hostInfo) {
+		perror("Getting host name failed");
+	}
+	return 0;	
+}//gethostent
 
 //Function to create an UDP socket
-int createSocket(struct hostent *hostInfo, struct sockaddr_in *channel) {
+int createSocket(struct hostent **hostInfo, struct sockaddr_in channel) {
 	//Create the socket
 	int clientSocket;
 	clientSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -67,14 +81,14 @@ int createSocket(struct hostent *hostInfo, struct sockaddr_in *channel) {
 	memset(&channel, 0, sizeof(channel)); 	//Set IP address to 0
 	channel.sin_family = AF_INET;		//Use IPV4		
 	memcpy(&channel.sin_addr.s_addr, hostInfo->h_addr, hostInfo->h_length);	//Copy host info to IP address
-	channel.sin_port_htons(SERVER_PORT);	//Set IP address port to the server port
+	channel.sin_port=htons(SERVER_PORT);	//Set IP address port to the server port
 
 	//Return socket
 	return clientSocket;
 }//createSocket
 
 //Function to connect the client to the server
-void serverConnect(int clientSocket, struct hostent *hostInfo, struct sockaddr_in *channel) {
+void serverConnect(int clientSocket, struct hostent **hostInfo, struct sockaddr_in channel) {
 	//Attempt to create the connection
 	int connection;
 	connection = connect(clientSocket, (struct sockaddr *) &channel, sizeof(channel));
@@ -86,14 +100,14 @@ void serverConnect(int clientSocket, struct hostent *hostInfo, struct sockaddr_i
 }//serverConnect
 
 //Function to determine parameter protocol type (ARQ type) 1 for SW 2 for GBN
-String ARQType(int arqNumber) {
-        if(arqNumber == 1) {
-                return "Stop and Wait";
-        else if(arqNumber == 2) {
-                return "Go Back N";
-        else {
-                perror("Unidentified ARQ protocol.")
-}//ARQType
+//String ARQType(int arqNumber) {
+//        if(arqNumber == 1) {
+//                return "Stop and Wait";
+//       else if(arqNumber == 2) {
+//                return "Go Back N";
+//        else {
+//                perror("Unidentified ARQ protocol.")
+//}//ARQType
 
 //Function to select a file name to receive from the server
 char selectFile() {
@@ -127,20 +141,13 @@ void requestFile(char *fileName, int clientSocket, char **argv, int bytes, char 
 }//requestFile
 
 //Function for Stop and Wait (SW)
-void StopAndWait () {
-	//Receive packets one by one
-	//Simulate packet loss from server	
-}/StopAndWait
+//void StopAndWait () {
+//	//Receive packets one by one
+//	//Simulate packet loss from server	
+//}/StopAndWait
 
 //Function for Go Back N (GBN)
-void GoBackN() {
-	//Receive packets in blocks
-	//Simulate packet loss from server
-}//GoBackN
-
-//Function to perform error handling
-perror(char *string) {
-	printf("%s\n%, string);
-	exit(1);
-}//perror
-
+//void GoBackN() {
+//	//Receive packets in blocks
+//	//Simulate packet loss from server
+//}//GoBackN
