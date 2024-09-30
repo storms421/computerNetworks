@@ -92,8 +92,9 @@ int main(int argc, char** argv) {
             f_size = st.st_size;
             fp = fopen(file_name_recv, "rb"); // Open file to send
 
-            int total_frame = (f_size % BUF_SIZE) == 0 ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1;
+            long int total_frame = (f_size % BUF_SIZE) == 0 ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1;
             printf("Total number of packets that will be sent -> %d\n", total_frame);
+            sendto(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)c_addr, length);
 
             // Calculate drop frames
             float drop_percent = atof(percent);
@@ -226,4 +227,6 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
         if (ack_num >= base) {
             printf("Ack received for frame.id# %d\n", ack_num);
             base = ack_num + 1; // Slide the window
-
+        }
+    }
+}
