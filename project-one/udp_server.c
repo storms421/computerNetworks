@@ -94,7 +94,6 @@ int main(int argc, char** argv) {
 
             long int total_frame = (f_size % BUF_SIZE) == 0 ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1;
             printf("Total number of packets that will be sent -> %d\n", total_frame);
-            sendto(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)c_addr, length);
 
             // Calculate drop frames
             float drop_percent = atof(percent);
