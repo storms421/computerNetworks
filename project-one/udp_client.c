@@ -1,6 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -8,124 +5,190 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 #include <stdarg.h>
 #include <dirent.h>
 
-//Client Side File
+#define BUF_SIZE 2048   // Max buffer size of the data in a frame
+#define SERVER_PORT 2940 // Server Port
 
-//Socket Commands for TCP:
-//SOCKET - Create a new communication endpoint similar to opening a file
-//BIND - Associate a local address with a socket
-//LISTEN - Announce willingness to accept connections; give queue size
-//ACCEPT - Passively establish an incoming connection
-//CONNECT - Actively attempt to establish a connection
-//SEND - Send some data over the connection
-//RECEIVE - Recieve some data from the connection
-//CLOSE - Release the connection
+// Frame structure for data packets
+struct frame_packet {
+    long int ID;
+    long int length;
+    char data[BUF_SIZE];
+};
 
-//Function declarations
-int getHostInfo(int argc, char **argv, struct hostent **hostInfo);
-int createSocket(struct hostent **hostInfo, struct sockaddr_in channel);
-void serverConnect(int clientSocket, struct hostent **hostInfo, struct sockaddr_in channel);
-char selectFile();
-void requestFile(char *fileName, int clientSocket, char **argv, int bytes, char *buffer);
-
-#define SERVER_PORT 2226 //Arbitrary server number
-#define BUF_SIZE 2048 //Block transfer size
-
-int main(int argc, char **argv) {
-    // Define variables
-    int bytes;                    // Size of file from server
-    char buffer[BUF_SIZE];        // Buffer for file from server
-    struct hostent *hostInfo;     // Info about server
-    struct sockaddr_in channel;   // Holds IP address
-    int clientSocket;
-    char fileName[100];
-
-    getHostInfo(argc, argv, &hostInfo);
-    clientSocket = createSocket(&hostInfo, &channel);
-    serverConnect(clientSocket, &hostInfo, &channel);
-    selectFile(fileName);
-    requestFile(fileName, clientSocket, argv, bytes, buffer);
-
-    close(clientSocket);  // Close the client socket after transfer is complete
-    return 0;
+// Error handler function
+static void print_error(char* msg) {
+    perror(msg);
+    exit(EXIT_FAILURE);
 }
 
-// Function to get the host info
-int getHostInfo(int argc, char **argv, struct hostent **hostInfo) {
-    // Make sure the correct number of arguments was inputted
-    if (argc != 3) {
-        perror("Usage: client server-name file-name");
-        exit(EXIT_FAILURE);  // Exit if incorrect number of arguments
-    }
-    // Get the host information
-    *hostInfo = gethostbyname(argv[1]);
-    if (!*hostInfo) {
-        perror("Getting host name failed");
-        exit(EXIT_FAILURE);  // Exit if host information retrieval fails
-    }
-    return 0;
-}
-
-// Function to create a UDP socket
-int createSocket(struct hostent **hostInfo, struct sockaddr_in *channel) {
-    // Create the socket
-    int clientSocket;
-    clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);  // Use UDP instead of TCP
-
-    // Check to make sure socket was made
-    if (clientSocket < 0) {
-        perror("Socket could not be created.");
-        exit(EXIT_FAILURE);  // Exit if socket creation fails
+// Main client function
+int main(int argc, char** argv) {
+    if (argc != 2) {
+        printf("Client: Usage: ./[%s] Hostname \n", argv[0]);
+        exit(EXIT_FAILURE);
     }
 
-    memset(channel, 0, sizeof(*channel));   // Set IP address to 0
-    channel->sin_family = AF_INET;          // Use IPV4
-    memcpy(&channel->sin_addr.s_addr, (*hostInfo)->h_addr, (*hostInfo)->h_length);  // Copy host info to IP address
-    channel->sin_port = htons(SERVER_PORT);  // Set IP address port to the server port
+    struct sockaddr_in send_addr, from_addr; // Socket addresses for server and client
+    struct frame_packet frame;               // Packet frame structure
+    struct timeval t_out = { 0, 0 };         // Timeout structure
+    struct hostent* h;
+    char protocolType_send[50];              // Protocol selection (Stop-and-Wait or Go-Back-N)
+    char file_name[20];                      // File name to receive
+    char protocolType[10];                   // Protocol type (1 = SW, 2 = GBN)
+    char percent[10];                        // Drop percentage
+    char ack_send[4] = "ACK";                // Acknowledgment message
 
-    // Return socket
-    return clientSocket;
-}
+    ssize_t length = 0;
+    int s;
+    FILE* fp;
 
-// Function to select a file name to receive from the server
-void selectFile(char *fileName) {
-    printf("Please enter the name of the file you want to request: ");
-    if (fgets(fileName, 100, stdin) != NULL) {
-        // Remove the trailing newline character if present
-        size_t len = strlen(fileName);
-        if (len > 0 && fileName[len - 1] == '\n') {
-            fileName[len - 1] = '\0';
+    // Initialize buffers
+    memset(ack_send, 0, sizeof(ack_send));
+    memset(&send_addr, 0, sizeof(send_addr));
+    memset(&from_addr, 0, sizeof(from_addr));
+
+    // Host IP lookup
+    h = gethostbyname(argv[1]);
+    if (!h) {
+        print_error("gethostbyname failed");
+    }
+
+    // Fill server structure with IP and port #
+    send_addr.sin_family = AF_INET;
+    send_addr.sin_port = htons(SERVER_PORT);
+    memcpy(&send_addr.sin_addr.s_addr, h->h_addr, h->h_length);
+
+    // Create socket
+    if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+        print_error("Client: Socket");
+    }
+
+    for (;;) {
+        memset(protocolType_send, 0, sizeof(protocolType_send));
+        memset(protocolType, 0, sizeof(protocolType));
+        memset(file_name, 0, sizeof(file_name));
+
+        // Display menu and ask for user input
+        printf("\n -----");
+        printf("\n Menu");
+        printf("\n -----");
+        printf("\n Enter the protocol number followed by file name and drop percentage:");
+        printf("\n ------------------------------------------------");
+        printf("\n For Stop-and-Wait enter [1]: \n Example: 1 [File Name] [percentage]\n");
+        printf("\n For Go-Back-N enter [2]: \n Example: 2 [File Name] [percentage]\n");
+        printf("\n ------------------------------------------------");
+        printf("\n INPUT: ");
+        scanf(" %[^\n]%*c", protocolType_send);
+
+        // Parse user input
+        sscanf(protocolType_send, "%s %s %s", protocolType, file_name, percent);
+
+        // Send protocol type and file name to server
+        if (sendto(s, protocolType_send, sizeof(protocolType_send), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+            print_error("Client: Send");
         }
-        printf("You are requesting: %s\n", fileName);
-    } else {
-        perror("Could not read file name.");
-        exit(EXIT_FAILURE);  // Exit if file name cannot be read
-    }
-}
 
-// Function to request the file
-void requestFile(char *fileName, int clientSocket, char **argv, int bytes, char *buffer) {
-    // Send file name to server
-    struct sockaddr_in serverAddr;
-    int serverAddrLen = sizeof(serverAddr);
+        // Stop-and-Wait Protocol
+        if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') {
+            long int total_frame = 0;
+            long int bytes_rec = 0, i = 0;
 
-    // Sending the request
-    if (sendto(clientSocket, fileName, strlen(fileName) + 1, 0, (struct sockaddr *)&serverAddr, serverAddrLen) == -1) {
-        perror("sendto failed");
-        exit(EXIT_FAILURE);  // Exit if send fails
-    }
+            // Set timeout for receiving
+            t_out.tv_sec = 2;
+            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval));
 
-    // Receive the file data
-    int readingFile = 1;
-    while (readingFile) {
-        bytes = recvfrom(clientSocket, buffer, BUF_SIZE, 0, (struct sockaddr *)&serverAddr, &serverAddrLen);
-        if (bytes <= 0) {  // Check for end of file or error
-            break;
+            // Receive total number of frames from server
+            recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+
+            // Reset timeout
+            t_out.tv_sec = 0;
+            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval));
+
+            if (total_frame > 0) {
+                printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
+                fp = fopen(file_name, "wb");
+
+                // Receive frames one by one
+                for (i = 1; i <= total_frame; i++) {
+                    memset(&frame, 0, sizeof(frame));
+                    recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+
+                    // Send acknowledgment back to server
+                    sendto(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
+
+                    // Drop repeated frames
+                    if (frame.ID != i) {
+                        i--;
+                    } else {
+                        fwrite(frame.data, 1, frame.length, fp);
+                        printf("Frame Number # %ld \t Frame Length -> %ld\n", frame.ID, frame.length);
+                        bytes_rec += frame.length;
+                    }
+                }
+
+                printf("Transmission Completed!\n");
+                printf("Total bytes transmitted -> %ld\n", bytes_rec);
+                fclose(fp);
+            } else {
+                printf("File is empty or invalid.\n");
+            }
         }
-        write(1, buffer, bytes);  // Write to standard out
+
+        // Go-Back-N Protocol
+        if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') {
+            long int total_frame = 0;
+            long int bytes_rec = 0, i = 0;
+
+            // Set timeout for receiving
+            t_out.tv_sec = 2;
+            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval));
+
+            // Receive total number of frames from server
+            recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+
+            // Reset timeout
+            t_out.tv_sec = 0;
+            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval));
+
+            if (total_frame > 0) {
+                printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
+                fp = fopen(file_name, "wb");
+
+                // Receive frames one by one in Go-Back-N fashion
+                for (i = 1; i <= total_frame; i++) {
+                    memset(&frame, 0, sizeof(frame));
+                    recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+
+                    // Send acknowledgment back to server
+                    sendto(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
+
+                    // Drop repeated frames
+                    if (frame.ID != i) {
+                        i--;
+                    } else {
+                        fwrite(frame.data, 1, frame.length, fp);
+                        printf("Frame Number # %ld \t Frame Length -> %ld\n", frame.ID, frame.length);
+                        bytes_rec += frame.length;
+                    }
+                }
+
+                printf("Transmission Completed!\n");
+                printf("Total bytes transmitted -> %ld\n", bytes_rec);
+                fclose(fp);
+            } else {
+                printf("File is empty or invalid.\n");
+            }
+        }
     }
+
+    close(s);
+    exit(EXIT_SUCCESS);
 }
