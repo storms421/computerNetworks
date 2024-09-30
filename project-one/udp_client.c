@@ -32,122 +32,100 @@ void serverConnect(int clientSocket, struct hostent **hostInfo, struct sockaddr_
 char selectFile();
 void requestFile(char *fileName, int clientSocket, char **argv, int bytes, char *buffer);
 
-#define SERVER_PORT 12345 //Arbitrary server number
-#define BUF_SIZE 4096 //Block transfer size
+#define SERVER_PORT 2226 //Arbitrary server number
+#define BUF_SIZE 2048 //Block transfer size
 
-int main(int argc, char** argv) {
-	//Define variables
-	int bytes;		    //Size of file from server
-	char buffer[BUF_SIZE];	    //Buffer for file from server
-	struct hostent *hostInfo;   //Info about server
-	struct sockaddr_in channel; //Holds IP address
+int main(int argc, char **argv) {
+    // Define variables
+    int bytes;                    // Size of file from server
+    char buffer[BUF_SIZE];        // Buffer for file from server
+    struct hostent *hostInfo;     // Info about server
+    struct sockaddr_in channel;   // Holds IP address
+    int clientSocket;
+    char fileName[100];
 
-	int clientSocket;
-	char fileName[100];
-	
-	getHostInfo(argc, argv, &hostInfo);
-	clientSocket = createSocket(&hostInfo, channel);
-	serverConnect(clientSocket, &hostInfo, channel);
-	fileName = selectFile();
-	requestFile(fileName, clientSocket, argv, bytes, buffer);	
-	
-}//main
+    getHostInfo(argc, argv, &hostInfo);
+    clientSocket = createSocket(&hostInfo, &channel);
+    serverConnect(clientSocket, &hostInfo, &channel);
+    selectFile(fileName);
+    requestFile(fileName, clientSocket, argv, bytes, buffer);
 
-//Function to get the host info
+    close(clientSocket);  // Close the client socket after transfer is complete
+    return 0;
+}
+
+// Function to get the host info
 int getHostInfo(int argc, char **argv, struct hostent **hostInfo) {
-	//Make sure the correct number of arguments was inputted
-	if (argc != 3) {
-		perror("Usage: client server-name file-name");
-	}
-	//Get the host information
-	hostInfo = gethostbyname(argv[1]);
-	if(!hostInfo) {
-		perror("Getting host name failed");
-	}
-	return 0;	
-}//gethostent
+    // Make sure the correct number of arguments was inputted
+    if (argc != 3) {
+        perror("Usage: client server-name file-name");
+        exit(EXIT_FAILURE);  // Exit if incorrect number of arguments
+    }
+    // Get the host information
+    *hostInfo = gethostbyname(argv[1]);
+    if (!*hostInfo) {
+        perror("Getting host name failed");
+        exit(EXIT_FAILURE);  // Exit if host information retrieval fails
+    }
+    return 0;
+}
 
-//Function to create an UDP socket
-int createSocket(struct hostent **hostInfo, struct sockaddr_in channel) {
-	//Create the socket
-	int clientSocket;
-	clientSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+// Function to create a UDP socket
+int createSocket(struct hostent **hostInfo, struct sockaddr_in *channel) {
+    // Create the socket
+    int clientSocket;
+    clientSocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);  // Use UDP instead of TCP
 
-	//Check to make sure socket was made
-	if (clientSocket < 0) {
-		perror("Socket could not be created.");
-	}
-	
-	memset(&channel, 0, sizeof(channel)); 	//Set IP address to 0
-	channel.sin_family = AF_INET;		//Use IPV4		
-	memcpy(&channel.sin_addr.s_addr, hostInfo->h_addr, hostInfo->h_length);	//Copy host info to IP address
-	channel.sin_port=htons(SERVER_PORT);	//Set IP address port to the server port
+    // Check to make sure socket was made
+    if (clientSocket < 0) {
+        perror("Socket could not be created.");
+        exit(EXIT_FAILURE);  // Exit if socket creation fails
+    }
 
-	//Return socket
-	return clientSocket;
-}//createSocket
+    memset(channel, 0, sizeof(*channel));   // Set IP address to 0
+    channel->sin_family = AF_INET;          // Use IPV4
+    memcpy(&channel->sin_addr.s_addr, (*hostInfo)->h_addr, (*hostInfo)->h_length);  // Copy host info to IP address
+    channel->sin_port = htons(SERVER_PORT);  // Set IP address port to the server port
 
-//Function to connect the client to the server
-void serverConnect(int clientSocket, struct hostent **hostInfo, struct sockaddr_in channel) {
-	//Attempt to create the connection
-	int connection;
-	connection = connect(clientSocket, (struct sockaddr *) &channel, sizeof(channel));
+    // Return socket
+    return clientSocket;
+}
 
-	//Print error if connection failed
-	if (connection < 0) {
-		perror("Connection failed.");
-	}
-}//serverConnect
+// Function to select a file name to receive from the server
+void selectFile(char *fileName) {
+    printf("Please enter the name of the file you want to request: ");
+    if (fgets(fileName, 100, stdin) != NULL) {
+        // Remove the trailing newline character if present
+        size_t len = strlen(fileName);
+        if (len > 0 && fileName[len - 1] == '\n') {
+            fileName[len - 1] = '\0';
+        }
+        printf("You are requesting: %s\n", fileName);
+    } else {
+        perror("Could not read file name.");
+        exit(EXIT_FAILURE);  // Exit if file name cannot be read
+    }
+}
 
-//Function to determine parameter protocol type (ARQ type) 1 for SW 2 for GBN
-//String ARQType(int arqNumber) {
-//        if(arqNumber == 1) {
-//                return "Stop and Wait";
-//       else if(arqNumber == 2) {
-//                return "Go Back N";
-//        else {
-//                perror("Unidentified ARQ protocol.")
-//}//ARQType
-
-//Function to select a file name to receive from the server
-char selectFile() {
-	char fileName[100];
-	
-	printf("Please enter the name of the file you want to request:");
-	if (fgets(fileName, sizeof(fileName), stdin) != NULL) {
-		printf("You are requesting: %s", fileName);
-	}
-	else {
-		perror("Could not read file name.");
-	}
-
-	return fileName;
-}//selectFile
-
-//Function to request the file
+// Function to request the file
 void requestFile(char *fileName, int clientSocket, char **argv, int bytes, char *buffer) {
-	//Send file name to server
-	write(clientSocket, argv[2], strlen(argv[2])+1);
+    // Send file name to server
+    struct sockaddr_in serverAddr;
+    int serverAddrLen = sizeof(serverAddr);
 
-	//After receiving the file, write to standard out
-	int readingFile = 1;
-	while(readingFile) {
-		bytes = read(clientSocket, buffer, BUF_SIZE);	//Read from socket
-		if (bytes <= 0) {				//Check for end of file
-			exit(0);
-		}
-		write(1, buffer, bytes);			//Write to standard out
-	}
-}//requestFile
+    // Sending the request
+    if (sendto(clientSocket, fileName, strlen(fileName) + 1, 0, (struct sockaddr *)&serverAddr, serverAddrLen) == -1) {
+        perror("sendto failed");
+        exit(EXIT_FAILURE);  // Exit if send fails
+    }
 
-//Function for Stop and Wait (SW)
-//void StopAndWait () {
-//	//Receive packets one by one
-//	//Simulate packet loss from server	
-//}/StopAndWait
-
-//Function for Go Back N (GBN)
-//void GoBackN() {
-//	//Receive packets in blocks
-//	//Simulate packet loss from server
-//}//GoBackN
+    // Receive the file data
+    int readingFile = 1;
+    while (readingFile) {
+        bytes = recvfrom(clientSocket, buffer, BUF_SIZE, 0, (struct sockaddr *)&serverAddr, &serverAddrLen);
+        if (bytes <= 0) {  // Check for end of file or error
+            break;
+        }
+        write(1, buffer, bytes);  // Write to standard out
+    }
+}
