@@ -14,7 +14,7 @@
 #include <dirent.h>
 
 #define BUF_SIZE 2048   // Max buffer size of the data in a frame
-#define SERVER_PORT 2940 // Server Port
+#define SERVER_PORT 2226 // Server Port
 
 // Frame structure for data packets
 struct frame_packet {
