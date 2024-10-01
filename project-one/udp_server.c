@@ -243,4 +243,3 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
     printf("Total Dropped frames: %d\n", drop_frame);
     printf("Total Resent frames: %d\n", resend_frame);
 }
-
