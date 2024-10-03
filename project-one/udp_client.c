@@ -29,7 +29,6 @@ static void print_error(char* msg) {
     exit(EXIT_FAILURE);  // Exit program with failure status
 }
 
-// Main client function
 int main(int argc, char** argv) {
     // Check for correct number of arguments (hostname expected)
     if (argc != 2) {
@@ -49,7 +48,8 @@ int main(int argc, char** argv) {
 
     ssize_t length = 0;                        // Length of received data
     int s;                                     // Socket descriptor
-    FILE* fp;                                  // File pointer for received file
+    FILE* fp_input;                            // File pointer for input file
+    FILE* fp_output;                           // File pointer for received file
 
     // Initialize buffers to zero
     memset(ack_send, 0, sizeof(ack_send)); // Clear acknowledgment buffer
@@ -90,9 +90,10 @@ int main(int argc, char** argv) {
         printf("\n INPUT: ");
         scanf(" %[^\n]%*c", protocolType_send); // Read user input
 
-        // Parse user input into protocol type, file name, and drop percentage
-        sscanf(protocolType_send, "%s %s %s", protocolType, file_name, percent);
-
+        if (sscanf(protocolType_send, "%s %s %s", protocolType, file_name, percent) != 3) {
+            fprintf(stderr, "Failed to parse input correctly\n");
+        }
+        
         // Send protocol type and file name to server
         if (sendto(s, protocolType_send, sizeof(protocolType_send), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
             print_error("Client: Send"); // Handle send failure
@@ -116,30 +117,45 @@ int main(int argc, char** argv) {
 
             if (total_frame > 0) { // Check if valid total frame count received
                 printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
-                fp = fopen(file_name, "wb"); // Open file for writing received data
+                fp_output = fopen("received_file_sw.txt", "wb"); // Open new file for writing received data
 
-                // Receive frames one by one
-                for (i = 1; i <= total_frame; i++) {
-                    memset(&frame, 0, sizeof(frame)); // Clear frame structure before receiving
-                    recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length); // Receive frame
-
-                    // Send acknowledgment back to server
-                    sendto(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
-
-                    // Check for dropped repeated frames
-                    if (frame.ID != i) { // If received frame ID doesn't match expected ID
-                        i--; // Stay on same frame index to receive again
-                    } else {
-                        fwrite(frame.data, 1, frame.length, fp); // Write received data to file
-                        printf("Frame Number # %ld \t Frame Length -> %ld\n", frame.ID, frame.length); // Display received frame info
-                        bytes_rec += frame.length; // Update total bytes received
-                    }
+                if (fp_output == NULL) {
+                    perror("Error opening output file");
+                    exit(EXIT_FAILURE);
                 }
+
+                fp_input = fopen(file_name, "rb"); // Open input file for reading
+
+                if (fp_input == NULL) {
+                    perror("Error opening input file");
+                    exit(EXIT_FAILURE);
+                }
+
+                // Read from input file and send to server
+                while (fread(frame.data, 1, BUF_SIZE, fp_input) > 0) {
+                    // Prepare and send frame to server
+                    frame.ID = i + 1;
+                    frame.length = strlen(frame.data);
+
+                    sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
+
+                    // Receive acknowledgment from server
+                    recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+
+                    // Check acknowledgment
+                    if (frame.ID != i + 1) {
+                        printf("Failed to receive acknowledgment for frame #%ld\n", i + 1);
+                    }
+
+                    i++;
+                }
+
+                // Close files after transmission
+                fclose(fp_input);
+                fclose(fp_output);
 
                 // Completion message after all frames are received
                 printf("Transmission Completed!\n");
-                printf("Total bytes transmitted -> %ld\n", bytes_rec);
-                fclose(fp); // Close file after writing
             } else {
                 printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
             }
@@ -163,30 +179,45 @@ int main(int argc, char** argv) {
 
             if (total_frame > 0) { // Check if valid total frame count received
                 printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
-                fp = fopen(file_name, "wb"); // Open file for writing received data
+                fp_output = fopen("received_file_gbn.txt", "wb"); // Open new file for writing received data
 
-                // Receive frames in Go-Back-N manner
-                for (i = 1; i <= total_frame; i++) {
-                    memset(&frame, 0, sizeof(frame)); // Clear frame structure before receiving
-                    recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length); // Receive frame
-
-                    // Send acknowledgment back to server
-                    sendto(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
-
-                    // Check for dropped repeated frames
-                    if (frame.ID != i) { // If received frame ID doesn't match expected ID
-                        i--; // Stay on same frame index to receive again
-                    } else {
-                        fwrite(frame.data, 1, frame.length, fp); // Write received data to file
-                        printf("Frame Number # %ld \t Frame Length -> %ld\n", frame.ID, frame.length); // Display received frame info
-                        bytes_rec += frame.length; // Update total bytes received
-                    }
+                if (fp_output == NULL) {
+                    perror("Error opening output file");
+                    exit(EXIT_FAILURE);
                 }
+
+                fp_input = fopen(file_name, "rb"); // Open input file for reading
+
+                if (fp_input == NULL) {
+                    perror("Error opening input file");
+                    exit(EXIT_FAILURE);
+                }
+
+                // Read from input file and send to server
+                while (fread(frame.data, 1, BUF_SIZE, fp_input) > 0) {
+                    // Prepare and send frame to server
+                    frame.ID = i + 1;
+                    frame.length = strlen(frame.data);
+
+                    sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
+
+                    // Receive acknowledgment from server
+                    recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+
+                    // Check acknowledgment
+                    if (frame.ID != i + 1) {
+                        printf("Failed to receive acknowledgment for frame #%ld\n", i + 1);
+                    }
+
+                    i++;
+                }
+
+                // Close files after transmission
+                fclose(fp_input);
+                fclose(fp_output);
 
                 // Completion message after all frames are received
                 printf("Transmission Completed!\n");
-                printf("Total bytes transmitted -> %ld\n", bytes_rec);
-                fclose(fp); // Close file after writing
             } else {
                 printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
             }
