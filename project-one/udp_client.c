@@ -92,186 +92,187 @@ int main(int argc, char** argv) {
         scanf(" %[^\n]%*c", protocolType_send); // Read user input
 
         // Check if user wants to exit
-    if (strcmp(protocolType_send, "exit") == 0) {
-        printf("Sending exit command to server...\n");
-        // Send the exit command
-        sendto(s, "EXIT", sizeof("EXIT"), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
-        break; // Exit the loop
-}
-
-        if (sscanf(protocolType_send, "%s %s %s", protocolType, file_name, percent) != 3) {
-            fprintf(stderr, "Failed to parse input correctly\n");
+        if (strcmp(protocolType_send, "exit") == 0) {
+            printf("Sending exit command to server...\n");
+            // Send the exit command
+            sendto(s, "EXIT", sizeof("EXIT"), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
+            break; // Exit the loop
         }
+
+            if (sscanf(protocolType_send, "%s %s %s", protocolType, file_name, percent) != 3) {
+                fprintf(stderr, "Failed to parse input correctly\n");
+            }
         
-        // Send protocol type and file name to server
-        if (sendto(s, protocolType_send, sizeof(protocolType_send), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
-            print_error("Client: Send"); // Handle send failure
-        }
+            // Send protocol type and file name to server
+            if (sendto(s, protocolType_send, sizeof(protocolType_send), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                print_error("Client: Send"); // Handle send failure
+            }
 
-        // Function to handle writing received frames to output file
-        void write_received_frame(FILE* fp_output, struct frame_packet* frame) {
-            fwrite(frame->data, 1, frame->length, fp_output); // Write the received data to the output file
-        }
+            // Function to handle writing received frames to output file
+            void write_received_frame(FILE* fp_output, struct frame_packet* frame) {
+                fwrite(frame->data, 1, frame->length, fp_output); // Write the received data to the output file
+            }
 
-        // Stop-and-Wait Protocol
-        if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') {
-            long int total_frame = 0; // Total number of frames to receive
-            long int i = 0; // Frame counter
+            // Stop-and-Wait Protocol
+            if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') {
+                long int total_frame = 0; // Total number of frames to receive
+                long int i = 0; // Frame counter
 
-            // Set timeout for receiving frames
-            t_out.tv_sec = 2; // 2 seconds timeout
-            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); // Apply timeout to socket
+                // Set timeout for receiving frames
+                t_out.tv_sec = 2; // 2 seconds timeout
+                setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); // Apply timeout to socket
 
-            // Receive total number of frames from server
-            recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+                // Receive total number of frames from server
+                recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
 
-            // Reset timeout to zero for further receives
-            t_out.tv_sec = 0;
-            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval));
+                // Reset timeout to zero for further receives
+                t_out.tv_sec = 0;
+                setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval));
 
-            if (total_frame > 0) { // Check if valid total frame count received
-                printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
-                fp_output = fopen("received_file_sw.txt", "wb"); // Open new file for writing received data
+                if (total_frame > 0) { // Check if valid total frame count received
+                    printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
+                    fp_output = fopen("received_file_sw.txt", "wb"); // Open new file for writing received data
 
-                if (fp_output == NULL) {
-                    perror("Error opening output file");
-                    exit(EXIT_FAILURE);
-                }
+                    if (fp_output == NULL) {
+                        perror("Error opening output file");
+                        exit(EXIT_FAILURE);
+                    }
 
-                // Open input file for reading
-                fp_input = fopen(file_name, "rb");
+                    // Open input file for reading
+                    fp_input = fopen(file_name, "rb");
 
-                if (fp_input == NULL) {
-                    perror("Error opening input file");
-                    exit(EXIT_FAILURE);
-                }
+                    if (fp_input == NULL) {
+                        perror("Error opening input file");
+                        exit(EXIT_FAILURE);
+                    }
 
-                // Read from input file and send to server
-                while (1) {
-                    // Read data from the input file
-                    size_t bytes_read = fread(frame.data, 1, BUF_SIZE, fp_input);
+                    // Read from input file and send to server
+                    while (1) {
+                        // Read data from the input file
+                        size_t bytes_read = fread(frame.data, 1, BUF_SIZE, fp_input);
 
-                    if (bytes_read == 0) {
-                        if (feof(fp_input)) {
-                            break; // End of file reached
-                        } else {
-                            perror("Error reading input file");
-                            break; // An error occurred
+                        if (bytes_read == 0) {
+                            if (feof(fp_input)) {
+                                break; // End of file reached
+                            } else {
+                                perror("Error reading input file");
+                                break; // An error occurred
+                            }
                         }
+
+                        // Prepare frame for sending
+                        frame.ID = i + 1; // Sequence number
+                        frame.length = bytes_read; // Length of data read
+
+                        // Send frame to server
+                        if (sendto(s, &frame, sizeof(frame.ID) + frame.length, 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                            print_error("Client: Send"); // Handle send failure
+                        }
+
+                        // Receive acknowledgment from server
+                        if (recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
+                            perror("Client: Receive ACK");
+                            // Optionally handle retransmission logic here
+                        } else {
+                            printf("Sent frame #%ld, received ACK for frame #%ld\n", frame.ID, frame.ID);
+                            // Write the received data to the output file
+                            fwrite(frame.data, 1, frame.length, fp_output); // Write to output file
+                        }
+
+                        i++; // Increment frame counter
                     }
 
-                    // Prepare frame for sending
-                    frame.ID = i + 1; // Sequence number
-                    frame.length = bytes_read; // Length of data read
+                    // Close input file after transmission
+                    fclose(fp_input);
+                    fclose(fp_output); // Close output file
 
-                    // Send frame to server
-                    if (sendto(s, &frame, sizeof(frame.ID) + frame.length, 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
-                        print_error("Client: Send"); // Handle send failure
-                    }
-
-                    // Receive acknowledgment from server
-                    if (recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
-                        perror("Client: Receive ACK");
-                        // Optionally handle retransmission logic here
-                    } else {
-                        printf("Sent frame #%ld, received ACK for frame #%ld\n", frame.ID, frame.ID);
-                        // Write the received data to the output file
-                        fwrite(frame.data, 1, frame.length, fp_output); // Write to output file
-                    }
-
-                    i++; // Increment frame counter
+                    // Completion message after all frames are received
+                    printf("Transmission Completed for Stop-and-Wait!\n");
+                } else {
+                    printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
                 }
+            }
 
-                // Close input file after transmission
-                fclose(fp_input);
-                fclose(fp_output); // Close output file
+            // Go-Back-N Protocol
+            if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') {
+                long int total_frame = 0; // Total number of frames to receive
+                long int i = 0; // Frame counter
 
-                // Completion message after all frames are received
-                printf("Transmission Completed for Stop-and-Wait!\n");
-            } else {
-                printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
+                // Set timeout for receiving frames
+                t_out.tv_sec = 2; // 2 seconds timeout
+                setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); // Apply timeout to socket
+
+                // Receive total number of frames from server
+                recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+
+                // Reset timeout to zero for further receives
+                t_out.tv_sec = 0;
+                setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval));
+
+                if (total_frame > 0) { // Check if valid total frame count received
+                    printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
+                    fp_output = fopen("received_file_gbn.txt", "wb"); // Open new file for writing received data
+
+                    if (fp_output == NULL) {
+                        perror("Error opening output file");
+                        exit(EXIT_FAILURE);
+                    }
+
+                    fp_input = fopen(file_name, "rb"); // Open input file for reading
+
+                    if (fp_input == NULL) {
+                        perror("Error opening input file");
+                        exit(EXIT_FAILURE);
+                    }
+
+                    struct frame_packet frame; // Structure to hold the received frame
+                    while (i < total_frame) {
+                        // Read data from the input file
+                        size_t bytes_read = fread(frame.data, 1, BUF_SIZE, fp_input);
+                        if (bytes_read == 0) {
+                            if (feof(fp_input)) {
+                                break; // End of file reached
+                            } else {
+                                perror("Error reading input file");
+                                break; // An error occurred
+                            }
+                        }
+
+                        // Prepare frame for sending
+                        frame.ID = i + 1; // Sequence number
+                        frame.length = bytes_read; // Length of data read
+
+                        // Send frame to server
+                        if (sendto(s, &frame, sizeof(frame.ID) + frame.length, 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                            print_error("Client: Send"); // Handle send failure
+                        }
+
+                        // Receive acknowledgment from server
+                        if (recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
+                            perror("Client: Receive ACK");
+                            // Optionally handle retransmission logic here
+                        } else {
+                            printf("Sent frame #%ld, received ACK for frame #%ld\n", frame.ID, frame.ID);
+                            // Write the received data to the output file
+                            fwrite(frame.data, 1, frame.length, fp_output); // Write to output file
+                        }
+
+                        i++; // Increment frame counter
+                    }
+
+                    // Close files after transmission
+                    fclose(fp_input);
+                    fclose(fp_output); // Close output file
+
+                    // Completion message after all frames are received
+                    printf("Transmission Completed for Go-Back-N!\n");
+                } else {
+                    printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
+                }
             }
         }
-
-        // Go-Back-N Protocol
-        if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') {
-            long int total_frame = 0; // Total number of frames to receive
-            long int i = 0; // Frame counter
-
-            // Set timeout for receiving frames
-            t_out.tv_sec = 2; // 2 seconds timeout
-            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); // Apply timeout to socket
-
-            // Receive total number of frames from server
-            recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
-
-            // Reset timeout to zero for further receives
-            t_out.tv_sec = 0;
-            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval));
-
-            if (total_frame > 0) { // Check if valid total frame count received
-                printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
-                fp_output = fopen("received_file_gbn.txt", "wb"); // Open new file for writing received data
-
-                if (fp_output == NULL) {
-                    perror("Error opening output file");
-                    exit(EXIT_FAILURE);
-                }
-
-                fp_input = fopen(file_name, "rb"); // Open input file for reading
-
-                if (fp_input == NULL) {
-                    perror("Error opening input file");
-                    exit(EXIT_FAILURE);
-                }
-
-                struct frame_packet frame; // Structure to hold the received frame
-                while (i < total_frame) {
-                    // Read data from the input file
-                    size_t bytes_read = fread(frame.data, 1, BUF_SIZE, fp_input);
-                    if (bytes_read == 0) {
-                        if (feof(fp_input)) {
-                            break; // End of file reached
-                        } else {
-                            perror("Error reading input file");
-                            break; // An error occurred
-                        }
-                    }
-
-                    // Prepare frame for sending
-                    frame.ID = i + 1; // Sequence number
-                    frame.length = bytes_read; // Length of data read
-
-                    // Send frame to server
-                    if (sendto(s, &frame, sizeof(frame.ID) + frame.length, 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
-                        print_error("Client: Send"); // Handle send failure
-                    }
-
-                    // Receive acknowledgment from server
-                    if (recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
-                        perror("Client: Receive ACK");
-                        // Optionally handle retransmission logic here
-                    } else {
-                        printf("Sent frame #%ld, received ACK for frame #%ld\n", frame.ID, frame.ID);
-                        // Write the received data to the output file
-                        fwrite(frame.data, 1, frame.length, fp_output); // Write to output file
-                    }
-
-                    i++; // Increment frame counter
-                }
-
-                // Close files after transmission
-                fclose(fp_input);
-                fclose(fp_output); // Close output file
-
-                // Completion message after all frames are received
-                printf("Transmission Completed for Go-Back-N!\n");
-            } else {
-                printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
-            }
-        }
-
-        close(s); // Close socket
-        exit(EXIT_SUCCESS); // Exit program successfully
-
+    }
+        
+    close(s); // Close socket
+    exit(EXIT_SUCCESS); // Exit program successfully
 }
