@@ -102,15 +102,17 @@ int main(int argc, char** argv) {
             int* testdrop = generate_drops(total_frame, drop_percent); // Get array of frames to drop
             int td = (int)(drop_percent * total_frame / 100); // Calculate total number of drops
             printf("Total frame drop: %i\n\n", td); // Output total number of dropped frames
+            printf("Received protocol type: '%s'\n", protocolType_recv); // Debug
+
 
             // Choose protocol based on client's request
             if (strcmp(protocolType_recv, "1") == 0) {
                 // Stop-and-Wait protocol
-                printf("Stop and wait")
+                printf("Stop and wait"); // Debug
                 stop_and_wait(s, &c_addr, length, fp, total_frame, testdrop, td);
             } else if (strcmp(protocolType_recv, "2") == 0) {
                 // Go-Back-N protocol
-                printf("Go Back [N]")
+                printf("Go Back [N]"); // Debug
                 go_back_n(s, &c_addr, length, fp, total_frame, testdrop, td);
             } else {
                 printf("Invalid Protocol Type\n"); // Invalid protocol type received
