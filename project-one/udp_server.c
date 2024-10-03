@@ -19,7 +19,7 @@
 #define SERVER_PORT 2226 // Server's UDP port
 #define WINDOW_SIZE 3 // Window size for Go-Back-N ARQ
 
-// Structure for a frame packet
+// Structure for a frame packet /
 struct frame_packet {
     long int ID; // Frame sequence number
     long int length; // Length of data in frame
