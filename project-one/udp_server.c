@@ -84,6 +84,13 @@ int main(int argc, char** argv) {
         }
         printf("Protocol and File Name Requested: %s\n", msg_recv); // Output received request
 
+        // Check for exit command
+        if (strcmp(msg_recv, "EXIT") == 0) {
+            printf("Server: Exiting...\n");
+            break; // Exit the loop
+        }
+
+
         // Parse received message (protocol type, file name, and drop percentage)
         sscanf(msg_recv, "%s %s %s", protocolType_recv, file_name_recv, percent);
 
