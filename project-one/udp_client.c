@@ -86,9 +86,16 @@ int main(int argc, char** argv) {
         printf("\n ------------------------------------------------");
         printf("\n For Stop-and-Wait enter [1]: \n Example: 1 [File Name] [percentage]\n");
         printf("\n For Go-Back-N enter [2]: \n Example: 2 [File Name] [percentage]\n");
+        printf("\n To exit enter [0]: \n");
         printf("\n ------------------------------------------------");
         printf("\n INPUT: ");
         scanf(" %[^\n]%*c", protocolType_send); // Read user input
+
+        // Check if user wants to exit
+        if (strcmp(protocolType_send, "exit") == 0) {
+            printf("Exiting client.\n");
+            break; // Exit the loop
+        }
 
         if (sscanf(protocolType_send, "%s %s %s", protocolType, file_name, percent) != 3) {
             fprintf(stderr, "Failed to parse input correctly\n");
