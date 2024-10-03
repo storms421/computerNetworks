@@ -108,11 +108,11 @@ int main(int argc, char** argv) {
             // Choose protocol based on client's request
             if (strcmp(protocolType_recv, "1") == 0) {
                 // Stop-and-Wait protocol
-                printf("Stop and wait"); // Debug
+                printf("Stop and wait\n"); // Debug
                 stop_and_wait(s, &c_addr, length, fp, total_frame, testdrop, td);
             } else if (strcmp(protocolType_recv, "2") == 0) {
                 // Go-Back-N protocol
-                printf("Go Back [N]"); // Debug
+                printf("Go Back [N]\n"); // Debug
                 go_back_n(s, &c_addr, length, fp, total_frame, testdrop, td);
             } else {
                 printf("Invalid Protocol Type\n"); // Invalid protocol type received
@@ -177,9 +177,14 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
         }
 
         // Send frame to client
-        sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length);
+        if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
+            perror("Server: Send frame failed"); // Handle send error
+        }
+
         // Wait for acknowledgment from client
-        recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length);
+        if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
+            perror("Server: Acknowledgment receive failed"); // Handle receive error
+        }
 
         // Check if acknowledgment matches frame ID
         if (ack_num == frame.ID) {
