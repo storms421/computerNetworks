@@ -123,7 +123,10 @@ int main(int argc, char** argv) {
             setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); // Apply timeout to socket
 
             // Receive total number of frames from server
-            recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+            if (recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
+                perror("Client: Receive total frame count");
+                exit(EXIT_FAILURE);
+            }
 
             // Reset timeout to zero for further receives
             t_out.tv_sec = 0;
@@ -147,7 +150,7 @@ int main(int argc, char** argv) {
                 }
 
                 // Read from input file and send to server
-                while (1) {
+                while (i < total_frame) {
                     // Read data from input file
                     size_t bytes_read = fread(frame.data, 1, BUF_SIZE, fp_input);
 
@@ -172,6 +175,7 @@ int main(int argc, char** argv) {
                     // Receive acknowledgment from server
                     if (recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
                         perror("Client: Receive ACK");
+                        // Optionally handle retransmission logic here
                     } else {
                         printf("Sent frame #%ld, received ACK for frame #%ld\n", frame.ID, frame.ID);
                         // Write received data to output file
@@ -181,14 +185,15 @@ int main(int argc, char** argv) {
                     i++; // Increment frame counter
                 }
 
-            // Close input file after transmission
-            fclose(fp_input);
-            fclose(fp_output); // Close output file
+                // Close input file after transmission
+                fclose(fp_input);
+                fclose(fp_output); // Close output file
 
-            // Completion message after all frames are received
-            printf("Transmission Completed for Stop-and-Wait!\n");
-        } else {
-            printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
+                // Completion message after all frames are received
+                printf("Transmission Completed for Stop-and-Wait!\n");
+            } else {
+                printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
+            }
         }
 
         // Go-Back-N Protocol
@@ -201,7 +206,10 @@ int main(int argc, char** argv) {
             setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); // Apply timeout to socket
 
             // Receive total number of frames from server
-            recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length);
+            if (recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
+                perror("Client: Receive total frame count");
+                exit(EXIT_FAILURE);
+            }
 
             // Reset timeout to zero for further receives
             t_out.tv_sec = 0;
@@ -223,7 +231,7 @@ int main(int argc, char** argv) {
                     exit(EXIT_FAILURE);
                 }
 
-                struct frame_packet frame; // Structure to hold received frame
+                // Read from input file and send to server
                 while (i < total_frame) {
                     // Read data from input file
                     size_t bytes_read = fread(frame.data, 1, BUF_SIZE, fp_input);
@@ -244,32 +252,38 @@ int main(int argc, char** argv) {
                     if (sendto(s, &frame, sizeof(frame.ID) + frame.length, 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                         print_error("Client: Send"); // Handle send failure
                     }
+                    printf("Sent frame #%ld\n", frame.ID); // Debugging print
 
                     // Receive acknowledgment from server
                     if (recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
                         perror("Client: Receive ACK");
                     } else {
-                        printf("Sent frame #%ld, received ACK for frame #%ld\n", frame.ID, frame.ID);
+                        // Check if acknowledgment matches the expected ID
+                        if (frame.ID == i + 1) {
+                            printf("Received ACK for frame #%ld\n", frame.ID);
                             // Write received data to output file
                             fwrite(frame.data, 1, frame.length, fp_output); // Write to output file
+                        } else {
+                            printf("ACK mismatch: Expected #%ld but received #%ld\n", i + 1, frame.ID);
+                            // Optionally implement retransmission logic here
                         }
-
-                        i++; // Increment frame counter
                     }
 
-                    // Close files after transmission
-                    fclose(fp_input);
-                    fclose(fp_output); // Close output file
-
-                    // Completion message after all frames are received
-                    printf("Transmission Completed for Go-Back-N!\n");
-                } else {
-                    printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
+                    i++; // Increment frame counter
                 }
+
+                // Close files after transmission
+                fclose(fp_input);
+                fclose(fp_output); // Close output file
+
+                // Completion message after all frames are received
+                printf("Transmission Completed for Go-Back-N!\n");
+            } else {
+                printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
             }
         }
     }
-        
+    
     close(s); // Close socket
     exit(EXIT_SUCCESS); // Exit program successfully
 }
