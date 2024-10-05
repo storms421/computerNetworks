@@ -160,15 +160,19 @@ int main(int argc, char** argv) {
                     if (sendto(s, &frame, sizeof(frame.ID) + frame.length, 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                         print_error("Client: Send"); // Handle send failure
                     }
-                    // Receive acknowledgment from server
+                    // After receiving the acknowledgment from the server
                     if (recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
                         perror("Client: Receive ACK");
                         // Optionally handle retransmission logic here
                     } else {
+                        // Print the received ACK for debugging purposes
+                        printf("Debug: Sent ACK for frame #%ld\n", frame.ID); // <-- Add this line
+
                         printf("Sent frame #%ld, received ACK for frame #%ld\n", frame.ID, frame.ID);
                         // Write received data to output file
                         fwrite(frame.data, 1, frame.length, fp_output); // Write to output file
                     }
+
                     i++; // Increment frame counter
                 }
                 // Close input file after transmission

@@ -191,11 +191,13 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
 
         // Check if acknowledgment matches frame ID
         if (ack_num == frame.ID) {
-            printf("frame.id# %ld \t Ack -> %ld \n", frame.ID, ack_num); // Print acknowledgment
+            printf("frame.id# %ld \t Ack -> %ld \n", frame.ID, ack_num); // Proceed if ACK is correct
         } else {
-            printf("frame.id# %ld \t Resend\n", frame.ID); // If acknowledgment doesn't match, resend frame
+            printf("frame.id# %ld \t Resend\n", frame.ID); // If ACK is incorrect, resend
             resend_frame++;
-            i--; // Decrement i to resend same frame
+            // Instead of decrementing i, repeat the same frame without changing i
+            fseek(fp, (i - 1) * BUF_SIZE, SEEK_SET); // Reset file pointer to current frame
+            continue; // Resend the same frame
         }
     }
 
