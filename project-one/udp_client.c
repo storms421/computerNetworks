@@ -113,6 +113,74 @@ int main(int argc, char** argv) {
             print_error("Client: Send"); // Handle send failure
         }
 
+        // Stop-and-Wait Protocol
+        if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') {
+            long int total_frame = 0; // Total number of frames to receive
+            long int i = 0; // Frame counter
+            // Set timeout for receiving frames
+            t_out.tv_sec = 2; // 2 seconds timeout
+            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); // Apply timeout to socket
+            // Receive total number of frames from server
+            if (recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
+                perror("Client: Receive total frame count");
+                exit(EXIT_FAILURE);
+            }
+            // Reset timeout to zero for further receives
+            t_out.tv_sec = 0;
+            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval));
+            if (total_frame > 0) { // Check if valid total frame count received
+                printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
+                fp_output = fopen("received_file_sw.txt", "wb"); // Open new file for writing received data
+                if (fp_output == NULL) {
+                    perror("Error opening output file");
+                    exit(EXIT_FAILURE);
+                }
+                // Open input file for reading
+                fp_input = fopen(file_name, "rb");
+                if (fp_input == NULL) {
+                    perror("Error opening input file");
+                    exit(EXIT_FAILURE);
+                }
+                // Read from input file and send to server
+                while (i < total_frame) {
+                    // Read data from input file
+                    size_t bytes_read = fread(frame.data, 1, BUF_SIZE, fp_input);
+                    if (bytes_read == 0) {
+                        if (feof(fp_input)) {
+                            break; // End of file reached
+                        } else {
+                            perror("Error reading input file");
+                            break; // An error occurred
+                        }
+                    }
+                    // Prepare frame for sending
+                    frame.ID = i + 1; // Sequence number
+                    frame.length = bytes_read; // Length of data read
+                    // Send frame to server
+                    if (sendto(s, &frame, sizeof(frame.ID) + frame.length, 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                        print_error("Client: Send"); // Handle send failure
+                    }
+                    // Receive acknowledgment from server
+                    if (recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
+                        perror("Client: Receive ACK");
+                        // Optionally handle retransmission logic here
+                    } else {
+                        printf("Sent frame #%ld, received ACK for frame #%ld\n", frame.ID, frame.ID);
+                        // Write received data to output file
+                        fwrite(frame.data, 1, frame.length, fp_output); // Write to output file
+                    }
+                    i++; // Increment frame counter
+                }
+                // Close input file after transmission
+                fclose(fp_input);
+                fclose(fp_output); // Close output file
+                // Completion message after all frames are received
+                printf("Transmission Completed for Stop-and-Wait!\n");
+            } else {
+                printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
+            }
+        }
+
         // Go-Back-N Protocol
         if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') {
             // Receive total number of frames from server
