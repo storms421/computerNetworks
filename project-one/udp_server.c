@@ -15,7 +15,7 @@
 #include <math.h>
 #include <time.h>
 
-#define BUF_SIZE (2048) // Max buffer size for data in a frame
+#define BUF_SIZE 4096 // Max buffer size for data in a frame
 #define SERVER_PORT 2226 // Server's UDP port
 #define WINDOW_SIZE 3 // Window size for Go-Back-N ARQ
 
