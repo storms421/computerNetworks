@@ -39,14 +39,13 @@ int main(int argc, char** argv) {
 
     struct stat st; // Structure to get file information (size, etc.)
     struct sockaddr_in s_addr, c_addr; // Server and client socket addresses
-    struct timeval t_out = { 0, 0 }; // Timeout structure (if needed)
+    socklen_t length; // Length of sockaddr_in structure
     char msg_recv[BUF_SIZE]; // Buffer to store received message from client
-    char file_name_recv[20]; // Buffer to store file name requested by client
+    char file_name_recv[256]; // Increased buffer size for file name
     char protocolType_recv[10]; // Buffer to store protocol type requested (1 = Stop-and-Wait, 2 = Go-Back-N)
     char percent[10]; // Buffer to store drop percentage
 
     ssize_t numRead; // Number of bytes read from socket
-    ssize_t length; // Length of sockaddr_in structure
     off_t f_size; // File size of requested file
     int s; // Socket descriptor
     FILE* fp; // File pointer for file being sent
@@ -79,7 +78,7 @@ int main(int argc, char** argv) {
         length = sizeof(c_addr); // Length of client address
 
         // Receive request message from client (protocol type, file name, drop percentage)
-        if ((numRead = recvfrom(s, msg_recv, BUF_SIZE, 0, (struct sockaddr*)&c_addr, (socklen_t*)&length)) == -1) {
+        if ((numRead = recvfrom(s, msg_recv, BUF_SIZE, 0, (struct sockaddr*)&c_addr, &length)) == -1) {
             print_error("Server: Received"); // Error handling for receiving data
         }
         printf("Protocol and File Name Requested: %s\n", msg_recv); // Output received request
@@ -90,19 +89,18 @@ int main(int argc, char** argv) {
             break; // Exit the loop
         }
 
-
         // Parse received message (protocol type, file name, and drop percentage)
         sscanf(msg_recv, "%s %s %s", protocolType_recv, file_name_recv, percent);
 
-        // Check if file exists on server
-        if (access(file_name_recv, F_OK) == 0) {
+        // Check if file exists on server and has read permissions
+        if (access(file_name_recv, F_OK | R_OK) == 0) {
             stat(file_name_recv, &st); // Get file information (size, etc.)
             f_size = st.st_size; // File size in bytes
             fp = fopen(file_name_recv, "rb"); // Open file for reading in binary mode
 
             // Calculate total number of frames required to send entire file
             long int total_frame = (f_size % BUF_SIZE) == 0 ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1;
-            printf("Total number of packets that will be sent -> %d\n", total_frame);
+            printf("Total number of packets that will be sent -> %ld\n", total_frame);
 
             // Calculate frames to drop based on drop percentage
             float drop_percent = atof(percent); // Convert drop percentage to a float
@@ -111,14 +109,11 @@ int main(int argc, char** argv) {
             printf("Total frame drop: %i\n\n", td); // Output total number of dropped frames
             printf("Received protocol type: '%s'\n", protocolType_recv); // Debug
 
-
             // Choose protocol based on client's request
             if (strcmp(protocolType_recv, "1") == 0) {
-                // Stop-and-Wait protocol
                 printf("Stop and wait\n"); // Debug
                 stop_and_wait(s, &c_addr, length, fp, total_frame, testdrop, td);
             } else if (strcmp(protocolType_recv, "2") == 0) {
-                // Go-Back-N protocol
                 printf("Go Back [N]\n"); // Debug
                 go_back_n(s, &c_addr, length, fp, total_frame, testdrop, td);
             } else {
@@ -126,8 +121,9 @@ int main(int argc, char** argv) {
             }
 
             fclose(fp); // Close file after transmission
+            free(testdrop); // Free dynamically allocated memory for dropped frames
         } else {
-            printf("Invalid Filename\n"); // File does not exist
+            printf("Invalid Filename or File Not Accessible\n"); // File does not exist or is not readable
         }
     }
 
