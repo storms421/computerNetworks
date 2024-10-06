@@ -116,9 +116,9 @@ int main(int argc, char** argv) {
         // Stop-and-Wait Protocol
         if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') {
             long int total_frame = 0; // Total number of frames to receive
-            long int i = 0; // Frame counter
             // Set timeout for receiving frames
             t_out.tv_sec = 2; // 2 seconds timeout
+	    long int i = 0; // Frame counter
             setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); // Apply timeout to socket
             // Receive total number of frames from server
             if (recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {

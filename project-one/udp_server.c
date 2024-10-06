@@ -191,8 +191,9 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
 
         // Check if acknowledgment matches frame ID
         if (ack_num == frame.ID) {
-            printf("frame.id# %ld \t Ack -> %ld \n", frame.ID, ack_num); // Proceed if ACK is correct
-        } else {
+            printf("frame.id# %ld \t Ack -> %ld \n", frame.ID, ack_num); // Proceed if ACK is correct    
+        } 
+	else {
             printf("frame.id# %ld \t Resend\n", frame.ID); // If ACK is incorrect, resend
             resend_frame++;
             // Instead of decrementing i, repeat the same frame without changing i
