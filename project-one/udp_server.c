@@ -209,7 +209,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
 // Implementation of Go-Back-N ARQ protocol
 void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td) {
     struct frame_packet frame; // Frame structure for sending data
-    int ack_num = 0, drop_frame = 0, resend_frame = 0, win_start = 1, win_end = WINDOW_SIZE; // Variables for tracking acknowledgments, drops, and resends
+    int ack_num = 0, drop_frame = 0, resend_frame = 0, win_start = 0, win_end = WINDOW_SIZE - 1; // Variables for tracking acknowledgments, drops, and resends
     long int i;
 
     // Loop through all frames to be sent

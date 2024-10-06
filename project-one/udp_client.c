@@ -154,23 +154,28 @@ int main(int argc, char** argv) {
                         }
                     }
                     // Prepare frame for sending
-                    frame.ID = i + 1; // Sequence number
+                    frame.ID = i; // Sequence number
                     frame.length = bytes_read; // Length of data read
                     // Send frame to server
                     if (sendto(s, &frame, sizeof(frame.ID) + frame.length, 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                         print_error("Client: Send"); // Handle send failure
                     }
                     // After receiving the acknowledgment from the server
-                    if (recvfrom(s, &frame.ID, sizeof(frame.ID), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
-                        perror("Client: Receive ACK");
-                        // Optionally handle retransmission logic here
+                    if (recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
+                        perror("Client: Receive frame");
                     } else {
-                        // Print the received ACK for debugging purposes
-                        printf("Debug: Sent ACK for frame #%ld\n", frame.ID); // <-- Add this line
+                        printf("Received frame #%ld\n", frame.ID);
 
-                        printf("Sent frame #%ld, received ACK for frame #%ld\n", frame.ID, frame.ID);
-                        // Write received data to output file
-                        fwrite(frame.data, 1, frame.length, fp_output); // Write to output file
+                        // Send ACK to the server after receiving frame
+                        long ack_num = frame.ID;
+                        if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                            perror("Client: Send ACK");
+                        } else {
+                            printf("Sent ACK for frame #%ld\n", ack_num);
+                        }
+
+                        // Write received data to the output file
+                        fwrite(frame.data, 1, frame.length, fp_output);
                     }
 
                     i++; // Increment frame counter
@@ -196,6 +201,13 @@ int main(int argc, char** argv) {
             if (total_frame > 0) {
                 printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
                 acked = (long int*)calloc(total_frame, sizeof(long int)); // Dynamically allocate ack array
+
+
+                acked = (long int*)calloc(total_frame, sizeof(long int));
+                if (acked == NULL) {
+                    perror("Error allocating memory for ACK tracking");
+                    exit(EXIT_FAILURE);
+                }
 
                 fp_output = fopen("received_file_gbn.txt", "wb");
                 if (fp_output == NULL) {
