@@ -141,11 +141,27 @@ void print_error(char* msg) {
 int* generate_drops(int total_frame, float drop_percent) {
     int td = (int)(drop_percent * total_frame / 100); // Calculate number of frames to drop
     int* testdrop = (int*)malloc(td * sizeof(int)); // Allocate memory for drop array
+    if (!testdrop) {
+        print_error("Memory allocation failed for testdrop");
+    }
     srand(time(NULL)); // Seed random number generator with current time
 
-    // Populate array with random frame numbers to drop
+    // Populate array with unique random frame numbers to drop
     for (int i = 0; i < td; i++) {
-        testdrop[i] = rand() % total_frame; // Random frame number to drop
+        int new_drop;
+        int duplicate;
+        do {
+            duplicate = 0;
+            new_drop = rand() % total_frame;
+            // Check for duplicates
+            for (int j = 0; j < i; j++) {
+                if (testdrop[j] == new_drop) {
+                    duplicate = 1;
+                    break;
+                }
+            }
+        } while (duplicate); // Keep generating until unique
+        testdrop[i] = new_drop;
         printf("Frame to drop: %d\n", testdrop[i]);
     }
 
@@ -164,6 +180,11 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
         frame.ID = i; // Set frame ID (Sequence Number)
         frame.length = fread(frame.data, 1, BUF_SIZE, fp); // Read data from file into frame
 
+        if (frame.length <= 0) {
+            // End of file or error, no need to send this frame
+            break;
+        }
+
         // Check if frame should be dropped
         int drop = 0;
         for (int j = 0; j < td; j++) {
@@ -181,49 +202,50 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
 
         // Send frame to client
         if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
-            perror("Server: Send frame failed"); // Handle send error
+            print_error("Server: Send frame failed");
         }
 
         // Wait for acknowledgment from client
         if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
-            perror("Server: Acknowledgment receive failed"); // Handle receive error
+            print_error("Server: Receive ack failed");
         }
 
-        // Check if acknowledgment matches frame ID
-        if (ack_num == frame.ID) {
-            printf("frame.id# %ld \t Ack -> %ld \n", frame.ID, ack_num); // Proceed if ACK is correct    
-        } 
-	else {
-            printf("frame.id# %ld \t Resend\n", frame.ID); // If ACK is incorrect, resend
-            resend_frame++;
-            // Instead of decrementing i, repeat the same frame without changing i
-            fseek(fp, (i - 1) * BUF_SIZE, SEEK_SET); // Reset file pointer to current frame
-            continue; // Resend the same frame
+        // Check acknowledgment
+        if (ack_num != frame.ID) {
+            printf("Frame# %ld resend\n", frame.ID); // If ack doesn't match, resend the frame
+            resend_frame++; // Increment resend count
+            i--; // Decrement i to resend the current frame
+        } else {
+            printf("Frame# %ld acknowledged\n", frame.ID); // Print acknowledged frame
         }
     }
-
-    // Print summary of transmission
-    printf("Total Dropped frames: %d\n", drop_frame);
-    printf("Total Resent frames: %d\n", resend_frame);
+    printf("\nTotal frame sent: %ld\n", total_frame);
+    printf("Total frame dropped: %i\n", drop_frame);
+    printf("Total frame resent: %i\n", resend_frame);
 }
 
 // Implementation of Go-Back-N ARQ protocol
 void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td) {
     struct frame_packet frame; // Frame structure for sending data
-    int ack_num = 0, drop_frame = 0, resend_frame = 0, win_start = 0, win_end = WINDOW_SIZE - 1; // Variables for tracking acknowledgments, drops, and resends
-    long int i;
+    int ack_num = 0, drop_frame = 0, resend_frame = 0; // Variables for tracking acknowledgments, drops, and resends
+    long int win_start = 1, win_end = WINDOW_SIZE; // Sliding window start and end
+    long int i = 1;
 
-    // Loop through all frames to be sent
-    while (win_start <= total_frame) {
-        for (i = win_start; i <= win_end && i <= total_frame; i++) {
+    while (i <= total_frame) {
+        for (long int j = win_start; j <= win_end && j <= total_frame; j++) {
             memset(&frame, 0, sizeof(frame)); // Clear frame structure
-            frame.ID = i; // Set frame ID (Sequence Number)
+            frame.ID = j; // Set frame ID (Sequence Number)
             frame.length = fread(frame.data, 1, BUF_SIZE, fp); // Read data from file into frame
+
+            if (frame.length <= 0) {
+                // End of file or error, no need to send this frame
+                break;
+            }
 
             // Check if frame should be dropped
             int drop = 0;
-            for (int j = 0; j < td; j++) {
-                if (frame.ID == testdrop[j]) { // If frame ID matches a drop frame
+            for (int k = 0; k < td; k++) {
+                if (frame.ID == testdrop[k]) { // If frame ID matches a drop frame
                     drop = 1;
                     break;
                 }
@@ -236,25 +258,29 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
             }
 
             // Send frame to client
-            sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length);
-        }
+            if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
+                print_error("Server: Send frame failed");
+            }
 
-        // Wait for acknowledgment from client
-        recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length);
+            // Wait for acknowledgment from client
+            if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
+                print_error("Server: Receive ack failed");
+            }
 
-        // Check if acknowledgment is within window
-        if (ack_num >= win_start) {
-            printf("frame.id# %ld \t Ack -> %ld \n", win_start, ack_num); // Print acknowledgment
-            win_start = ack_num + 1; // Slide window forward
-            win_end = win_start + WINDOW_SIZE - 1;
-        } else {
-            printf("frame.id# %ld \t Resend\n", win_start); // If acknowledgment doesn't match, resend window
-            resend_frame++;
-            fseek(fp, (win_start - 1) * BUF_SIZE, SEEK_SET); // Move file pointer to start of window
+            // Check acknowledgment
+            if (ack_num >= win_start) {
+                printf("Frame# %ld acknowledged\n", ack_num); // Print acknowledged frame
+                win_start = ack_num + 1; // Slide the window forward
+                win_end = win_start + WINDOW_SIZE - 1; // Adjust window size
+            } else {
+                printf("Frame# %ld resend\n", ack_num); // If ack is less than win_start, resend frames
+                resend_frame++; // Increment resend count
+                break; // Stop sending and resend frames from win_start
+            }
         }
+        i = win_start; // Update i to next frame to be sent
     }
-
-    // Print summary of transmission
-    printf("Total Dropped frames: %d\n", drop_frame);
-    printf("Total Resent frames: %d\n", resend_frame);
+    printf("\nTotal frame sent: %ld\n", total_frame);
+    printf("Total frame dropped: %i\n", drop_frame);
+    printf("Total frame resent: %i\n", resend_frame);
 }
