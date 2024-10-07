@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
         // Stop-and-Wait Protocol
         if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') {
             long int total_frame = 0; // Total number of frames to receive
-            long int i = 0; // Frame counter
+            long int i = 1; // Frame counter starts at 1, since server sends frame# 1 first
             socklen_t length = sizeof(from_addr);  // Changed to socklen_t
 
             // Receive total number of frames from server
@@ -127,11 +127,11 @@ int main(int argc, char** argv) {
                     exit(EXIT_FAILURE);
                 }
 
-                while (i < total_frame) {
+                while (i <= total_frame) {
                     // Clear previous frame
                     memset(&frame, 0, sizeof(frame));
 
-                    // Receive frame from server
+                    // Try receiving frame from server
                     if (recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
                         perror("Client: Receive frame");
                         // Timeout occurred, resend previous ACK
@@ -173,7 +173,6 @@ int main(int argc, char** argv) {
                 printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
             }
         }
-
 
         // Go-Back-N Protocol
         if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') {
