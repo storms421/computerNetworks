@@ -14,6 +14,7 @@
 #include <dirent.h>
 #include <math.h>
 #include <time.h>
+#include <sys/time.h> // For setting socket timeout
 
 #define BUF_SIZE 4096 // Max buffer size for data in a frame
 #define SERVER_PORT 2226 // Server's UDP port
@@ -137,6 +138,18 @@ void print_error(char* msg) {
     exit(EXIT_FAILURE); // Exit program with failure status
 }
 
+// Function to set a timeout for receiving
+void set_socket_timeout(int sock, int sec, int usec) {
+    struct timeval timeout;
+    timeout.tv_sec = sec;
+    timeout.tv_usec = usec;
+    
+    // Set the socket option for receive timeout
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Error setting socket timeout");
+    }
+}
+
 // Function to generate which frames to drop based on drop percentage
 int* generate_drops(int total_frame, float drop_percent) {
     int td = (int)(drop_percent * total_frame / 100); // Calculate number of frames to drop
@@ -176,6 +189,9 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
     int resend_limit = 5;  // Maximum number of retries for each frame
     int retry_count = 0;   // Track how many times the frame has been resent
 
+    // Set timeout for receiving ACK (2 seconds, adjust as necessary)
+    set_socket_timeout(s, 2, 0); // 2 seconds timeout
+
     // Loop through all frames to be sent
     for (i = 1; i <= total_frame; i++) {
         memset(&frame, 0, sizeof(frame)); // Clear frame structure
@@ -214,7 +230,12 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
 
             // Wait for acknowledgment from client
             if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
-                perror("Server: Receive ack failed");  // Handle timeout or receive error
+                if (errno == EWOULDBLOCK || errno == EAGAIN) { 
+                    // Timeout reached
+                    printf("Server: Timeout waiting for ACK for frame# %ld. Resending...\n", frame.ID);
+                } else {
+                    perror("Server: Receive ack failed");  // Handle other errors
+                }
             } else {
                 printf("Received ACK for frame# %d\n", ack_num); // Print received acknowledgment
 
