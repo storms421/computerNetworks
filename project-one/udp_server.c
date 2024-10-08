@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
 
 #define BUF_SIZE 4096    // Max buffer size for data in a frame
 #define SERVER_PORT 2226 // Server's UDP port
