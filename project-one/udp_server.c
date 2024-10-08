@@ -99,6 +99,9 @@ int main(int argc, char** argv) {
             fp = fopen(file_name_recv, "rb"); // Open file for reading in binary mode
 
             // Calculate total number of frames required to send entire file
+            stat(file_name_recv, &st); // Get file information (size, etc.)
+            f_size = st.st_size; // File size in bytes
+            printf("File size: %ld bytes\n", f_size); // Debug
             long int total_frame = (f_size % BUF_SIZE) == 0 ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1;
             printf("Total number of packets that will be sent -> %ld\n", total_frame);
 

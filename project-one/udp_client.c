@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
 
     struct sockaddr_in send_addr, from_addr; // Socket address structures for server and client
     struct frame_packet frame;                 // Structure for receiving packets
-    struct timeval t_out = { 2, 0 };           // 2-second timeout for receiving data
+    struct timeval t_out = { 10, 0 };           // 10-second timeout for receiving data
     struct hostent* h;                         // Host information structure
     char protocolType_send[50];                // Buffer for user input regarding protocol, file name, and drop percentage
     char file_name[20];                        // Buffer for file name to receive
@@ -127,6 +127,8 @@ int main(int argc, char** argv) {
                     exit(EXIT_FAILURE);
                 }
 
+                printf("Expecting to receive %ld total frames\n", total_frame); // Debug
+
                 while (i <= total_frame) {
                     // Clear previous frame
                     memset(&frame, 0, sizeof(frame));
@@ -146,6 +148,7 @@ int main(int argc, char** argv) {
 
                     // If the frame ID is what we expect
                     if (frame.ID == i) {
+                        printf("Preparing to send ACK for frame ID: %ld\n", frame.ID); // Debug
                         // Send ACK to the server after receiving the correct frame
                         long ack_num = frame.ID; // Correct ACK for received frame
                         if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
@@ -153,6 +156,8 @@ int main(int argc, char** argv) {
                         } else {
                             printf("Sent ACK for frame #%ld\n", ack_num);
                         }
+
+                        printf("Writing %ld bytes of data for frame ID: %ld\n", frame.length, frame.ID); // Debug
 
                         // Write received data to the output file
                         fwrite(frame.data, 1, frame.length, fp_output);
