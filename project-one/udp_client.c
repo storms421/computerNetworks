@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
     int ack_num;                                // ACK number received from server
     int expected_ack = 1;                       // Expected ACK number from server
     long int* acked;                            // Dynamic array to track acknowledged frames
-    ssize_t length = 0;                        // Length of received data
+    socklen_t length = sizeof(from_addr); // Use socklen_t for recvfrom
     int s;                                     // Socket descriptor
     FILE* fp_input;                            // File pointer for input file
     FILE* fp_output;                           // File pointer for received file
