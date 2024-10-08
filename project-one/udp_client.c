@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
     memset(&send_addr, 0, sizeof(send_addr));
     memset(&from_addr, 0, sizeof(from_addr));
 
-    h = gethostbyname(argv[1]);
+    h = gethostbyname(argv[1]); //Get the hostname from argument
     if (!h) {
         print_error("gethostbyname failed"); // Handle DNS lookup failure
     }
@@ -73,13 +73,15 @@ int main(int argc, char** argv) {
         print_error("Client: Socket"); 
     }
 
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); 
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); //Sets option specified by SO_RCVTIMEO at level SOL_SOCKET to value of t_out 
 
     for (;;) { 
+        //Initializing buffers to 0
         memset(protocolType_send, 0, sizeof(protocolType_send));
         memset(protocolType, 0, sizeof(protocolType));
         memset(file_name, 0, sizeof(file_name));
 
+        //Prompt the user for input
         printf("\n -----");
         printf("\n Menu");
         printf("\n -----");
@@ -92,23 +94,26 @@ int main(int argc, char** argv) {
         printf("\n INPUT: ");
         scanf(" %[^\n]%*c", protocolType_send); 
 
+        //Exit command to stop server
         if (strcmp(protocolType_send, "exit") == 0) {
             printf("Sending exit command to server...\n");
             sendto(s, "EXIT", sizeof("EXIT"), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
             break; 
         }
 
+        //Make sure the arguments are correct
         if (sscanf(protocolType_send, "%s %s %s", protocolType, file_name, percent) != 3) {
             fprintf(stderr, "Failed to parse input correctly\n");
             continue; 
         }
 
+        //Make sure the client can send properly
         if (sendto(s, protocolType_send, sizeof(protocolType_send), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
             print_error("Client: Send"); 
         }
 
         // Stop-and-Wait Protocol
-        if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') {
+        if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') { //Check argument for Stop-and-Wait
             long int total_frame = 0; // Total number of frames to receive
             long int i = 1; // Frame counter starts at 1, since server sends frame# 1 first
             socklen_t length = sizeof(from_addr);  // Changed to socklen_t
@@ -180,7 +185,7 @@ int main(int argc, char** argv) {
         }
 
         // Go-Back-N Protocol
-        if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') {
+        if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') { //Check argument for Go-Bacn-N
             int window_size = 4;  // Define window size (you can adjust this as necessary)
             long int base = 0;    // Base of the window (frames sent but not acknowledged)
             long int next_seq_num = 0;  // Next sequence number to be sent
@@ -193,6 +198,7 @@ int main(int argc, char** argv) {
                 exit(EXIT_FAILURE);
             }
 
+            //Open file for received server data
             fp_output = fopen("received_file_gbn.txt", "wb");
             if (fp_output == NULL) {
                 perror("Error opening output file");
