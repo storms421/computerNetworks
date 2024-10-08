@@ -26,13 +26,14 @@ struct frame_packet {
     char data[BUF_SIZE]; // Data in frame
 };
 
+//Function prototypes
 void print_error(char* msg);
 void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td);
 void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td);
 int* generate_drops(int total_frame, float drop_percent); // Generates which frames to drop based on drop percentage
 
 int main(int argc, char** argv) {
-    if (argc != 1) { // Ensure correct usage
+    if (argc != 1) { // Ensure correct number of arguments
         printf("Usage: ./[%s]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
@@ -102,7 +103,7 @@ int main(int argc, char** argv) {
             stat(file_name_recv, &st); // Get file information (size, etc.)
             f_size = st.st_size; // File size in bytes
             printf("File size: %ld bytes\n", f_size); // Debug
-            long int total_frame = (f_size % BUF_SIZE) == 0 ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1;
+            long int total_frame = (f_size % BUF_SIZE) == 0 ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1; //Get the total number of frames/packets
             printf("Total number of packets that will be sent -> %ld\n", total_frame);
 
             // Calculate frames to drop based on drop percentage
@@ -113,10 +114,10 @@ int main(int argc, char** argv) {
             printf("Received protocol type: '%s'\n", protocolType_recv); // Debug
 
             // Choose protocol based on client's request
-            if (strcmp(protocolType_recv, "1") == 0) {
+            if (strcmp(protocolType_recv, "1") == 0) { //Stop and Wait protocol if 1
                 printf("Stop and wait\n"); // Debug
-                stop_and_wait(s, &c_addr, length, fp, total_frame, testdrop, td);
-            } else if (strcmp(protocolType_recv, "2") == 0) {
+                stop_and_wait(s, &c_addr, length, fp, total_frame, testdrop, td); 
+            } else if (strcmp(protocolType_recv, "2") == 0) { //Go-Back-N protocol if 2
                 printf("Go Back [N]\n"); // Debug
                 go_back_n(s, &c_addr, length, fp, total_frame, testdrop, td);
             } else {
@@ -144,7 +145,7 @@ void print_error(char* msg) {
 int* generate_drops(int total_frame, float drop_percent) {
     int td = (int)(drop_percent * total_frame / 100); // Calculate number of frames to drop
     int* testdrop = (int*)malloc(td * sizeof(int)); // Allocate memory for drop array
-    if (!testdrop) {
+    if (!testdrop) { //If memory was not allocated correctly
         print_error("Memory allocation failed for testdrop");
     }
     srand(time(NULL)); // Seed random number generator with current time
@@ -155,7 +156,7 @@ int* generate_drops(int total_frame, float drop_percent) {
         int duplicate;
         do {
             duplicate = 0;
-            new_drop = rand() % total_frame;
+            new_drop = rand() % total_frame; //Make a random frame number based on the total frames
             // Check for duplicates
             for (int j = 0; j < i; j++) {
                 if (testdrop[j] == new_drop) {
@@ -245,6 +246,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
         }
     }
 
+    //Print frame data
     printf("\nTotal frame sent: %ld\n", total_frame);
     printf("Total frame dropped: %i\n", drop_frame);
     printf("Total frame resent: %i\n", resend_frame);
@@ -258,7 +260,7 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
     long int i = 1;
 
     while (i <= total_frame) {
-        for (long int j = win_start; j <= win_end && j <= total_frame; j++) {
+        for (long int j = win_start; j <= win_end && j <= total_frame; j++) { //Until the end of the window and total frames
             memset(&frame, 0, sizeof(frame)); // Clear frame structure
             frame.ID = j; // Set frame ID (Sequence Number)
             frame.length = fread(frame.data, 1, BUF_SIZE, fp); // Read data from file into frame
@@ -306,6 +308,7 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
         }
         i = win_start; // Update i to next frame to be sent
     }
+    //Print frame data
     printf("\nTotal frame sent: %ld\n", total_frame);
     printf("Total frame dropped: %i\n", drop_frame);
     printf("Total frame resent: %i\n", resend_frame);
