@@ -28,21 +28,21 @@ Terminal 1 (Server side):
 
 	./server
 
-Terminal 2 (Client side)**:
+Terminal 2 (Client side):
 
 	./client <server_hostname>
 
 Client Menu:
 Once the client starts, you'll be prompted to enter a command in the format:
 
-	- [protocol_type] [file_name] [drop_percentage]
+	[protocol_type] [file_name] [drop_percentage]
 
 Example:
 - Stop-and-Wait Protocol (with 10% packet drop):
-	- 1 testfile.txt 10
+	1 testfile.txt 10
 
 - Go-Back-N Protocol (with 20% packet drop):
-	- 2 testfile.txt 20
+	2 testfile.txt 20
 
 Protocol Options:
 - Stop-and-Wait (SW): Enter 1 for Stop-and-Wait protocol.
