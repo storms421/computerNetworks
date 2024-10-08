@@ -3,229 +3,175 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <errno.h>
+#include <stdarg.h>
+#include <dirent.h>
+#include <math.h>
+#include <time.h> // Include for random drop generation
 
-#define BUF_SIZE 4096    // Max buffer size for data in a frame
-#define SERVER_PORT 2226 // Server's UDP port
-#define WINDOW_SIZE 3    // Window size for Go-Back-N ARQ
+#define BUF_SIZE 4096 // Max buffer size of the data in a frame
+#define SERVER_PORT 2226 // Use your port number as specified
 
-// Structure for a frame packet
 struct frame_packet {
-    long int ID;       // Frame sequence number
-    long int length;   // Length of data in frame
-    char data[BUF_SIZE]; // Data in frame
+    long int ID;
+    long int length;
+    char data[BUF_SIZE];
 };
 
-// Function to print an error message and exit program
-void print_error(char* msg) {
+struct frame_buf {
+    long int ID;
+    long int length;
+    char data[BUF_SIZE];
+};
+
+static void print_error(char* msg) {
     perror(msg);
     exit(EXIT_FAILURE);
 }
 
-// Function to simulate packet loss based on a given probability
-int simulate_loss(float loss_probability) {
-    int rand_val = rand() % 100;
-    return rand_val < loss_probability; // Return 1 if the frame should be "dropped"
-}
-
-// Function to set a timeout for receiving
-void set_socket_timeout(int sock, int sec, int usec) {
-    struct timeval timeout;
-    timeout.tv_sec = sec;
-    timeout.tv_usec = usec;
-    
-    // Set the socket option for receive timeout
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
-        perror("Error setting socket timeout");
-    }
-}
-
-// Stop-and-Wait ARQ protocol
-void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, long int total_frame, float loss_probability) {
-    struct frame_packet frame;
-    int ack_num = 0;
-    long int i;
-    int retry_count;
-    const int resend_limit = 5; // Maximum retries for a frame
-
-    // Set timeout for receiving ACK (e.g., 2 seconds)
-    set_socket_timeout(s, 2, 0);
-
-    for (i = 1; i <= total_frame; i++) {
-        memset(&frame, 0, sizeof(frame)); // Clear the frame structure
-        frame.ID = i;
-        frame.length = fread(frame.data, 1, BUF_SIZE, fp); // Read data from the file into the frame
-
-        // If end of file or error occurs while reading, break
-        if (frame.length <= 0) {
-            break;
-        }
-
-        // Simulate packet loss
-        if (simulate_loss(loss_probability)) {
-            printf("Frame %ld dropped\n", frame.ID);
-            continue; // Skip sending this frame
-        }
-
-        // Resend logic
-        retry_count = 0;
-        while (retry_count < resend_limit) {
-            // Send frame to client
-            if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
-                print_error("Server: Failed to send frame");
-            } else {
-                printf("Frame %ld sent\n", frame.ID);
-            }
-
-            // Wait for ACK
-            if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
-                if (errno == EWOULDBLOCK || errno == EAGAIN) {
-                    // Timeout occurred
-                    printf("Timeout waiting for ACK for frame %ld. Retrying...\n", frame.ID);
-                } else {
-                    perror("Server: Receive ACK failed");
-                }
-            } else {
-                // If the correct ACK is received, move to the next frame
-                if (ack_num == frame.ID) {
-                    printf("Frame %ld acknowledged\n", frame.ID);
-                    break;
-                } else {
-                    printf("Incorrect ACK received. Resending frame %ld...\n", frame.ID);
-                }
-            }
-
-            retry_count++;
-            if (retry_count == resend_limit) {
-                printf("Error: Frame %ld reached maximum resend attempts. Terminating transmission.\n", frame.ID);
-                return;
-            }
-        }
-    }
-
-    printf("\nTransmission finished. Total frames: %ld\n", total_frame);
-}
-
-// Go-Back-N ARQ protocol
-void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, long int total_frame, float loss_probability) {
-    struct frame_packet frame;
-    int ack_num = 0;
-    long int win_start = 1, win_end = WINDOW_SIZE;
-    long int i = 1;
-
-    while (i <= total_frame) {
-        for (long int j = win_start; j <= win_end && j <= total_frame; j++) {
-            memset(&frame, 0, sizeof(frame));
-            frame.ID = j;
-            frame.length = fread(frame.data, 1, BUF_SIZE, fp);
-
-            if (simulate_loss(loss_probability)) {
-                printf("Frame %ld dropped\n", frame.ID);
-                continue; // Simulate dropped frame
-            }
-
-            // Send the frame
-            if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
-                print_error("Server: Failed to send frame");
-            }
-
-            // Wait for ACK (can be extended with timeout handling as in Stop-and-Wait)
-            if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
-                print_error("Server: Failed to receive ACK");
-            }
-
-            // Move the window forward if ACK is valid
-            if (ack_num >= win_start) {
-                printf("Frame %d acknowledged, moving window\n", ack_num);
-                win_start = ack_num + 1;
-                win_end = win_start + WINDOW_SIZE - 1;
-            } else {
-                printf("Resending from frame %ld\n", win_start);
-                break; // Resend from the start of the window
-            }
-        }
-        i = win_start; // Update i to next frame to be sent
-    }
-
-    printf("\nTransmission finished. Total frames: %ld\n", total_frame);
-}
-
-// Main server function
+// Main loop
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        printf("Usage: %s <drop_probability> <protocol_type>\n", argv[0]);
+    if ((argc < 1) || (argc > 1)) {
+        printf("Usage: ./[%s] \n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    float drop_probability = atof(argv[1]); // Drop probability as a percentage
-    int protocol_type = atoi(argv[2]); // 1 = Stop-and-Wait, 2 = Go-Back-N
-
-    struct sockaddr_in s_addr, c_addr;
-    socklen_t length = sizeof(c_addr);
-    int s;
-    FILE* fp;
-    char file_name_recv[256];
-    struct stat st;
+    struct stat st; 
+    struct sockaddr_in s_addr, c_addr; 
+    struct frame_buf window_buf[3]; 
+    struct frame_packet frame; 
+    struct timeval t_out = { 0, 0 }; 
+    char msg_recv[BUF_SIZE]; 
+    char file_name_recv[20]; 
+    char protocolType_recv[10]; 
+    char percent[10]; 
+    ssize_t numRead;
+    ssize_t length;
     off_t f_size;
-    long int total_frame;
+    long int ack_num = 0;
+    int ack_send = 0;
+    int s;
+    FILE* fp; 
 
-    // Initialize server socket
     memset(&s_addr, 0, sizeof(s_addr));
     s_addr.sin_family = AF_INET;
     s_addr.sin_port = htons(SERVER_PORT);
     s_addr.sin_addr.s_addr = INADDR_ANY;
 
-    // Create a socket
     if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
-        print_error("Server: Socket creation failed");
+        print_error("Server: Socket");
     }
 
-    // Bind the socket
     if (bind(s, (struct sockaddr*)&s_addr, sizeof(s_addr)) == -1) {
-        print_error("Server: Bind failed");
+        print_error("Server: Bind");
     }
 
     for (;;) {
+        printf("Server: Waiting for client to connect\n");
+        memset(msg_recv, 0, sizeof(msg_recv));
+        memset(protocolType_recv, 0, sizeof(protocolType_recv));
         memset(file_name_recv, 0, sizeof(file_name_recv));
+        memset(percent, 0, sizeof(percent));
+        length = sizeof(c_addr);
 
-        printf("Server: Waiting for client to request a file\n");
-
-        // Receive the file name from the client
-        if (recvfrom(s, file_name_recv, sizeof(file_name_recv), 0, (struct sockaddr*)&c_addr, &length) == -1) {
-            print_error("Server: Failed to receive file name");
+        if ((numRead = recvfrom(s, msg_recv, BUF_SIZE, 0, (struct sockaddr*)&c_addr, (socklen_t*)&length)) == -1) {
+            print_error("Server: Received");
         }
-        printf("Client requested file: %s\n", file_name_recv);
+        printf("Protocol and File Name Requested: %s\n", msg_recv);
 
-        // Check if the requested file exists and is readable
-        if (access(file_name_recv, F_OK | R_OK) == 0) {
-            stat(file_name_recv, &st);
-            f_size = st.st_size;
-            fp = fopen(file_name_recv, "rb");
+        sscanf(msg_recv, "%s %s %s", protocolType_recv, file_name_recv, percent);
 
-            // Calculate total number of frames required to send the entire file
-            total_frame = (f_size % BUF_SIZE == 0) ? f_size / BUF_SIZE : f_size / BUF_SIZE + 1;
-            printf("Total frames to send: %ld\n", total_frame);
+        if ((strcmp(protocolType_recv, "1") == 0) && (file_name_recv[0] != '\0')) {
+            // Stop-and-Wait protocol
+            printf("\nClient Requested File: %s\n", file_name_recv);
+            if (access(file_name_recv, F_OK) == 0) { 
+                int total_frame = 0, resend_frame = 0, drop_frame = 0, t_out_flag = 0;
+                long int i = 0;
+                stat(file_name_recv, &st); 
+                f_size = st.st_size; 
+                t_out.tv_sec = 2;
+                t_out.tv_usec = 0;
+                setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); 
 
-            // Select the ARQ protocol
-            if (protocol_type == 1) {
-                stop_and_wait(s, &c_addr, length, fp, total_frame, drop_probability);
-            } else if (protocol_type == 2) {
-                go_back_n(s, &c_addr, length, fp, total_frame, drop_probability);
+                fp = fopen(file_name_recv, "rb"); 
+                total_frame = (f_size % BUF_SIZE == 0) ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1;
+                printf("Total number of packets that will be sent -> %d\n", total_frame);
+
+                float fpercent = atof(percent);
+                float numpercent = fpercent / 100;
+                int td = (int)(numpercent * total_frame);
+                printf("Total frame drop: %i\n\n", td);
+                srand(time(0)); 
+
+                int testdrop[td];
+                for (i = 0; i < td; i++) {
+                    testdrop[i] = rand() % total_frame;
+                }
+
+                length = sizeof(c_addr);
+                sendto(s, &(total_frame), sizeof(total_frame), 0, (struct sockaddr*)&c_addr, sizeof(c_addr)); 
+                recvfrom(s, &(ack_num), sizeof(ack_num), 0, (struct sockaddr*)&c_addr, (socklen_t*)&length); 
+
+                while (ack_num != total_frame) {
+                    sendto(s, &(total_frame), sizeof(total_frame), 0, (struct sockaddr*)&c_addr, sizeof(c_addr));
+                    recvfrom(s, &(ack_num), sizeof(ack_num), 0, (struct sockaddr*)&c_addr, (socklen_t*)&length);
+                    resend_frame++;
+                    if (resend_frame == 3) {
+                        t_out_flag = 1;
+                        break;
+                    }
+                }
+
+                for (i = 1; i <= total_frame; i++) {
+                    memset(&frame, 0, sizeof(frame));
+                    ack_num = 0;
+                    frame.ID = i;
+                    frame.length = fread(frame.data, 1, BUF_SIZE, fp);
+                    sendto(s, &(frame), sizeof(frame), 0, (struct sockaddr*)&c_addr, sizeof(c_addr)); 
+                    recvfrom(s, &(ack_num), sizeof(ack_num), 0, (struct sockaddr*)&c_addr, (socklen_t*)&length); 
+
+                    for (int j = 0; j < td; j++) {
+                        if (frame.ID == testdrop[j]) {
+                            sendto(s, &(frame), sizeof(frame), 0, (struct sockaddr*)&c_addr, sizeof(c_addr));
+                            recvfrom(s, &(ack_num), sizeof(ack_num), 0, (struct sockaddr*)&c_addr, (socklen_t*)&length);
+                            printf("frame.id# %ld \t dropped, %d times\n", frame.ID, ++drop_frame);
+                            resend_frame++;
+                            if (resend_frame == 3) {
+                                t_out_flag = 1;
+                                break;
+                            }
+                        }
+                    }
+
+                    resend_frame = 0;
+                    drop_frame = 0;
+                    if (t_out_flag == 1) {
+                        printf("File not sent\n");
+                        break;
+                    }
+                    printf("frame.id# %ld \t Ack -> %ld \n", i, ack_num);
+                    if (total_frame == ack_num) {
+                        printf("File sent\n");
+                    }
+                }
+
+                fclose(fp);
+                t_out.tv_sec = 0;
+                t_out.tv_usec = 0;
+                setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); 
             } else {
-                printf("Invalid protocol type\n");
+                printf("Invalid Filename\n");
             }
-
-            fclose(fp); // Close the file after transmission
-        } else {
-            printf("File not accessible or doesn't exist\n");
         }
+        // Go-Back-N protocol
     }
 
-    close(s); // Close the socket
-    return 0;
+    close(s);
+    exit(EXIT_SUCCESS);
 }
