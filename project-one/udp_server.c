@@ -185,7 +185,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
     int retry_count = 0;   // Track how many times the frame has been resent
 
     // Loop through all frames to be sent
-    for (i = 1; i <= total_frame; i++) {
+    for (i = 1; i <= total_frame; ) {
         memset(&frame, 0, sizeof(frame)); // Clear frame structure
         frame.ID = i; // Set frame ID (Sequence Number)
         frame.length = fread(frame.data, 1, BUF_SIZE, fp); // Read data from file into frame
@@ -207,49 +207,51 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
         if (drop) {
             printf("frame.id# %ld \t dropped\n", frame.ID); // Print dropped frame
             drop_frame++; // Increment drop count
-            // Don't move to the next frame yet, retry sending this one
-        } else {
-            // Send the frame (non-dropped)
-            retry_count = 0;
-            while (retry_count < resend_limit) {
-                // Send frame to client
-                if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
-                    print_error("Server: Send frame failed");
+            drop = 0; // Reset drop flag so next time we retry sending it
+            continue; // Continue retrying to send the same frame
+        }
+
+        // Resend loop in case acknowledgment fails
+        retry_count = 0;
+        while (retry_count < resend_limit) {
+            // Send frame to client
+            if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
+                print_error("Server: Send frame failed");
+            } else {
+                printf("Frame# %ld sent\n", frame.ID); // Print sent frame
+            }
+
+            // Reset length before each `recvfrom()` call
+            length = sizeof(*c_addr); // Reset length to sizeof(sockaddr_in)
+
+            // Wait for acknowledgment from client
+            if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
+                perror("Server: Receive ack failed");  // Handle timeout or receive error
+            } else {
+                printf("Received ACK for frame# %d\n", ack_num); // Print received acknowledgment
+
+                // If acknowledgment matches the frame ID, move to the next frame
+                if (ack_num == frame.ID) {
+                    printf("Frame# %ld acknowledged\n", frame.ID); // Print acknowledged frame
+                    i++; // Move to the next frame
+                    break; // Break retry loop and send the next frame
                 } else {
-                    printf("Frame# %ld sent\n", frame.ID); // Print sent frame
-                }
-
-                // Reset length before each `recvfrom()` call
-                length = sizeof(*c_addr); // Reset length to sizeof(sockaddr_in)
-
-                // Wait for acknowledgment from client
-                if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
-                    perror("Server: Receive ack failed");  // Handle timeout or receive error
-                } else {
-                    printf("Received ACK for frame# %d\n", ack_num); // Print received acknowledgment
-
-                    // If acknowledgment matches the frame ID, move to the next frame
-                    if (ack_num == frame.ID) {
-                        printf("Frame# %ld acknowledged\n", frame.ID); // Print acknowledged frame
-                        break; // Move to the next frame
-                    } else {
-                        printf("Incorrect ACK received (ACK = %d). Resending frame# %ld...\n", ack_num, frame.ID);
-                    }
-                }
-
-                retry_count++;
-                resend_frame++; // Increment resend count if we failed to get a correct ACK
-
-                if (retry_count == resend_limit) {
-                    printf("Error: Frame# %ld reached maximum resend attempts. Terminating transmission.\n", frame.ID);
-                    break; // If retry limit is reached, exit the loop
+                    printf("Incorrect ACK received (ACK = %d). Resending frame# %ld...\n", ack_num, frame.ID);
                 }
             }
 
-            // If the maximum retries were reached, terminate transmission
+            retry_count++;
+            resend_frame++; // Increment resend count if we failed to get a correct ACK
+
             if (retry_count == resend_limit) {
-                break;
+                printf("Error: Frame# %ld reached maximum resend attempts. Terminating transmission.\n", frame.ID);
+                break; // If retry limit is reached, exit the loop
             }
+        }
+
+        // If the maximum retries were reached, terminate transmission
+        if (retry_count == resend_limit) {
+            break;
         }
     }
 
