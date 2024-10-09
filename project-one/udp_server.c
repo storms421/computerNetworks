@@ -62,6 +62,14 @@ int main(int argc, char** argv) {
         print_error("Server: Socket"); // Print error if socket creation fails
     }
 
+    struct timeval timeout;
+    timeout.tv_sec = 2;  // Wait for 2 seconds
+    timeout.tv_usec = 0; // No microseconds
+    if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        print_error("setsockopt failed");
+    }
+
+
     // Bind socket to server address
     if (bind(s, (struct sockaddr*)&s_addr, sizeof(s_addr)) == -1) {
         print_error("Server: Bind"); // Print error if binding fails
