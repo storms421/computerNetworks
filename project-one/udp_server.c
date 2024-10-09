@@ -309,7 +309,7 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
             perror("Server: Receive ACK failed");  // Handle timeout or receive error
             retry_count++;
             if (retry_count >= resend_limit) {
-                printf("Error: Retry limit reached. Resending from base frame #%ld.\n", base);
+                printf("Error: Retry limit reached. Resending entire window from base frame #%ld.\n", base);
                 next_seq_num = base;  // Go back to base to resend
                 retry_count = 0;  // Reset retry count after a full window resend
             }
@@ -320,9 +320,9 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
                 base = ack_num + 1;
                 retry_count = 0;  // Reset retry count upon successful ACK
             } else {
-                // Go back and resend from the base if the ack received is lower than base
-                printf("Received out-of-order ACK. Resending from base frame# %ld.\n", base);
-                next_seq_num = base;
+                // Received an out-of-order ACK, resend window from base
+                printf("Received out-of-order ACK for #%d. Resending from base frame# %ld.\n", ack_num, base);
+                next_seq_num = base;  // Resend the frames starting from base
             }
         }
     }
