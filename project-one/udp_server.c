@@ -261,63 +261,70 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
 }
 
 // Implementation of Go-Back-N ARQ protocol
+// Implementation of Go-Back-N ARQ protocol for server
 void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td) {
     struct frame_packet frame; // Frame structure for sending data
-    int ack_num = 0, drop_frame = 0, resend_frame = 0; // Variables for tracking acknowledgments, drops, and resends
-    long int win_start = 1, win_end = WINDOW_SIZE; // Sliding window start and end
-    long int i = 1;
+    int ack_num = -1, drop_frame = 0, resend_frame = 0; // Variables for tracking acknowledgments, drops, and resends
+    long int base = 1;  // Base of the window (first unacknowledged frame)
+    long int next_seq_num = 1;  // Next sequence number to send
+    int window_size = 4;  // Size of the Go-Back-N window
+    int resend_limit = 5;  // Retry limit per frame
+    int retry_count = 0;  // Retry count for resend attempts
 
-    while (i <= total_frame) {
-        for (long int j = win_start; j <= win_end && j <= total_frame; j++) { //Until the end of the window and total frames
-            memset(&frame, 0, sizeof(frame)); // Clear frame structure
-            frame.ID = j; // Set frame ID (Sequence Number)
-            frame.length = fread(frame.data, 1, BUF_SIZE, fp); // Read data from file into frame
+    while (base <= total_frame) {
+        // Send frames within the current window
+        while (next_seq_num < base + window_size && next_seq_num <= total_frame) {
+            memset(&frame, 0, sizeof(frame));
+            frame.ID = next_seq_num;
+            frame.length = fread(frame.data, 1, BUF_SIZE, fp);
 
-            if (frame.length <= 0) {
-                // End of file or error, no need to send this frame
-                break;
-            }
-
-            // Check if frame should be dropped
+            // If frame is dropped, skip sending it
             int drop = 0;
-            for (int k = 0; k < td; k++) {
-                if (frame.ID == testdrop[k]) { // If frame ID matches a drop frame
+            for (int j = 0; j < td; j++) {
+                if (frame.ID == testdrop[j]) {
                     drop = 1;
                     break;
                 }
             }
 
             if (drop) {
-                printf("frame.id# %ld \t dropped\n", frame.ID); // Print dropped frame
-                drop_frame++; // Increment drop count
-                continue; // Skip sending this frame
+                printf("frame.id# %ld dropped (simulated loss)\n", frame.ID);
+                drop_frame++;
+                next_seq_num++;  // Move to next frame even if it was dropped
+                continue;
             }
 
-            // Send frame to client
+            // Send the frame
             if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
                 print_error("Server: Send frame failed");
-            }
-
-            // Wait for acknowledgment from client
-            if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
-                print_error("Server: Receive ack failed");
-            }
-
-            // Check acknowledgment
-            if (ack_num >= win_start) {
-                printf("Frame# %ld acknowledged\n", ack_num); // Print acknowledged frame
-                win_start = ack_num + 1; // Slide the window forward
-                win_end = win_start + WINDOW_SIZE - 1; // Adjust window size
             } else {
-                printf("Frame# %ld resend\n", ack_num); // If ack is less than win_start, resend frames
-                resend_frame++; // Increment resend count
-                break; // Stop sending and resend frames from win_start
+                printf("Frame# %ld sent\n", frame.ID);
+                next_seq_num++; // Move to next frame
             }
         }
-        i = win_start; // Update i to next frame to be sent
+
+        // Receive ACK
+        length = sizeof(*c_addr);
+        if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
+            perror("Server: Receive ACK failed");  // Handle timeout or receive error
+            retry_count++;
+            if (retry_count >= resend_limit) {
+                printf("Error: Retry limit reached. Resending from base frame #%ld.\n", base);
+                next_seq_num = base;  // Go back to base to resend
+                retry_count = 0;  // Reset retry count after a full window resend
+            }
+        } else {
+            printf("Received ACK for frame# %d\n", ack_num);
+            if (ack_num >= base) {
+                // Slide window to just beyond the last acknowledged frame
+                base = ack_num + 1;
+                retry_count = 0;  // Reset retry count upon successful ACK
+            }
+        }
     }
-    //Print frame data
-    printf("\nTotal frame sent: %ld\n", total_frame);
-    printf("Total frame dropped: %i\n", drop_frame);
-    printf("Total frame resent: %i\n", resend_frame);
+
+    // Print summary
+    printf("\nTotal frames attempted to be sent: %ld\n", total_frame);
+    printf("Total frames dropped: %i\n", drop_frame);
+    printf("Total frames resent: %i\n", resend_frame);
 }

@@ -205,75 +205,78 @@ int main(int argc, char** argv) {
     }
 
         // Go-Back-N Protocol
-        if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') { //Check argument for Go-Bacn-N
-            int window_size = 4;  // Define window size (you can adjust this as necessary)
-            long int base = 0;    // Base of the window (frames sent but not acknowledged)
-            long int next_seq_num = 0;  // Next sequence number to be sent
-            int max_seq_num = total_frame;  // Max sequence number (total frames to be received)
-            long int ack_num = 0;  // ACK received from the server
+        if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') {
+            long int base = 1; // Base of the expected frames
+            socklen_t length = sizeof(from_addr); // Set length for recvfrom()
 
-            acked = (long int*)calloc(total_frame, sizeof(long int));  // Array to track acknowledged frames
-            if (acked == NULL) {
-                perror("Error allocating memory for ACK tracking");
+            // Receive total number of frames from server
+            if (recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
+                perror("Client: Receive total frame count failed");
                 exit(EXIT_FAILURE);
             }
 
-            //Open file for received server data
-            fp_output = fopen("received_file_gbn.txt", "wb");
-            if (fp_output == NULL) {
-                perror("Error opening output file");
-                exit(EXIT_FAILURE);
-            }
-
-            // Open input file for sending frames
-            fp_input = fopen(file_name, "rb");
-            if (fp_input == NULL) {
-                perror("Error opening input file");
-                exit(EXIT_FAILURE);
-            }
-
-            // GBN protocol loop
-            while (base < total_frame) {
-                // Send frames within the window
-                while (next_seq_num < base + window_size && next_seq_num < total_frame) {
-                    // Prepare frame for sending
-                    frame.ID = next_seq_num;
-                    frame.length = fread(frame.data, 1, BUF_SIZE, fp_input);  // Read data from input file
-
-                    // Send frame to server
-                    if (sendto(s, &frame, sizeof(frame.ID) + frame.length, 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
-                        print_error("Client: Send frame");
-                    }
-                    printf("Sent frame #%ld\n", frame.ID);
-
-                    next_seq_num++;  // Move to the next frame to send
+            if (total_frame > 0) {
+                printf("\nSERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
+                fp_output = fopen("received_file_gbn.txt", "wb");
+                if (fp_output == NULL) {
+                    perror("Error opening output file");
+                    exit(EXIT_FAILURE);
                 }
 
-                // Wait for ACK from the server
-                if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&from_addr, (socklen_t*)&length) == -1) {
-                    perror("Client: Receive ACK");
-                    // Timeout or error, resend unacknowledged frames from base
-                    printf("Timeout occurred, resending frames from base #%ld\n", base);
-                    next_seq_num = base;  // Go back to base to resend
-                } else {
-                    printf("Received ACK for frame #%ld\n", ack_num);
-                    if (ack_num >= base) {
-                        // Slide window forward
-                        base = ack_num + 1;
+                printf("Expecting to receive %ld total frames\n", total_frame);
+
+                while (base <= total_frame) {
+                    memset(&frame, 0, sizeof(frame));
+
+                    // Receive frame from server
+                    if (recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
+                        perror("Client: Receive frame failed");
+                        // Timeout occurred, resend ACK for the last successfully received frame
+                        long ack_num = base - 1;  // Send ACK for the last correctly received frame
+                        if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                            perror("Client: Resend ACK failed");
+                        } else {
+                            printf("Resent last ACK for frame #%ld due to timeout\n", ack_num);
+                        }
+                        continue; // Retry receiving the next frame
+                    }
+
+                    printf("Received frame #%ld\n", frame.ID);
+
+                    // If the frame ID is what we expect
+                    if (frame.ID == base) {
+                        // Send ACK for the received frame
+                        long ack_num = frame.ID;
+                        if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                            perror("Client: Send ACK failed");
+                        } else {
+                            printf("Sent ACK for frame #%ld\n", ack_num);
+                        }
+
+                        // Write received data to the output file
+                        fwrite(frame.data, 1, frame.length, fp_output);
+                        printf("Writing %ld bytes of data for frame ID: %ld\n", frame.length, frame.ID);
+
+                        // Move to the next expected frame
+                        base++;
+                    } else {
+                        // If we received an out-of-order frame, resend the last correct ACK
+                        long ack_num = base - 1;  // Last successfully received frame
+                        printf("Out of order frame received, resending ACK for #%ld\n", ack_num);
+                        if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                            perror("Client: Resend ACK for out-of-order frame failed");
+                        }
                     }
                 }
 
-                // Write received data to output file
-                fwrite(frame.data, 1, frame.length, fp_output);
+                fclose(fp_output);
+                printf("Transmission Completed for Go-Back-N!\n");
+            } else {
+                printf("File is empty or invalid.\n");
             }
-
-            fclose(fp_input);  // Close input file after all frames are sent
-            fclose(fp_output); // Close output file after all frames are received
-            free(acked);  // Free dynamically allocated memory
-            printf("Transmission Completed for Go-Back-N!\n");
         }
-    }
 
     close(s);
     exit(EXIT_SUCCESS);
+
 }
