@@ -273,11 +273,7 @@ int main(int argc, char** argv) {
                     } else {
                         // If we received an out-of-order frame, resend the last correct ACK
                         long ack_num = base - 1;  // Last successfully received frame
-                        if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
-                            perror("Client: Resend ACK failed");
-                        } else {
-                            printf("Sent ACK for out-of-order frame. Expecting frame# %ld\n", base);
-                        }
+                        printf("Out of order");
                     }
                 }
             }
