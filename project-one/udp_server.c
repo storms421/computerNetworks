@@ -176,7 +176,6 @@ int* generate_drops(int total_frame, float drop_percent) {
     return testdrop; // Return array of dropped frames
 }
 
-// Implementation of Stop-and-Wait ARQ protocol
 void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td) {
     struct frame_packet frame; // Frame structure for sending data
     int ack_num = 0, drop_frame = 0, resend_frame = 0; // Variables for tracking acknowledgments, drops, and resends
@@ -195,7 +194,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
             break;
         }
 
-        // Check if frame should be dropped
+        // Check if frame should be dropped (only simulate drop once per frame)
         int drop = 0;
         for (int j = 0; j < td; j++) {
             if (frame.ID == testdrop[j]) { // If frame ID matches a drop frame
@@ -204,21 +203,21 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
             }
         }
 
-        if (drop) {
+        // If frame is to be dropped, simulate the drop and then retry sending it
+        if (drop && retry_count == 0) {
             printf("frame.id# %ld \t dropped\n", frame.ID); // Print dropped frame
             drop_frame++; // Increment drop count
-            drop = 0; // Reset drop flag so next time we retry sending it
-            continue; // Continue retrying to send the same frame
+            retry_count++; // Increment retry count to indicate a first drop
+            continue; // Move to retry sending the same frame
         }
 
         // Resend loop in case acknowledgment fails
-        retry_count = 0;
         while (retry_count < resend_limit) {
             // Send frame to client
             if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
                 print_error("Server: Send frame failed");
             } else {
-                printf("Frame# %ld sent\n", frame.ID); // Print sent frame
+                printf("Frame# %ld sent (retry count: %d)\n", frame.ID, retry_count); // Print sent frame with retry info
             }
 
             // Reset length before each `recvfrom()` call
@@ -233,6 +232,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
                 // If acknowledgment matches the frame ID, move to the next frame
                 if (ack_num == frame.ID) {
                     printf("Frame# %ld acknowledged\n", frame.ID); // Print acknowledged frame
+                    retry_count = 0; // Reset retry count for next frame
                     i++; // Move to the next frame
                     break; // Break retry loop and send the next frame
                 } else {
@@ -260,6 +260,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
     printf("Total frame dropped: %i\n", drop_frame);
     printf("Total frame resent: %i\n", resend_frame);
 }
+
 
 // Implementation of Go-Back-N ARQ protocol
 void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td) {
