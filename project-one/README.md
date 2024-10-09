@@ -98,7 +98,7 @@ CHALLENGES OVERCAME:
 
 - File Transfer Integrity: One persistent issue was ensuring the integrity of file transfers. Initially, the client received files that didn't reflect requested changes. We addressed this by modifying our server to create a new file for each requested transfer, ensuring accurate data delivery.
 
-- Frame Dropping: Currently, our server intermittently experiences frame drops during file transmissions. While the overall percentage of dropped frames remains consistent, some files are incompletely transmitted due to text exceeding frame size limits. We are actively working to optimize this process for smoother file transfers.
+- Frame Dropping/Mixup: Currently, our server intermittently experiences frame drops during file transmissions. While the overall percentage of dropped frames remains consistent, some files are incompletely transmitted due to text exceeding frame size limits. We are actively working to optimize this process for smoother file transfers. This is mostly in the GBN part of the code where the files aren't being sent properly and the server and client are dropping the frames they each need.
 
 RESOURCES & DISCUSSIONS:
 ========================
