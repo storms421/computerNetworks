@@ -291,17 +291,16 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
             if (drop) {
                 printf("frame.id# %ld dropped (simulated loss)\n", frame.ID);
                 drop_frame++;
-                next_seq_num++;  // Move to next frame even if it was dropped
-                continue;
+            } else {
+                // Send the frame
+                if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
+                    print_error("Server: Send frame failed");
+                } else {
+                    printf("Frame# %ld sent\n", frame.ID);
+                }
             }
 
-            // Send the frame
-            if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
-                print_error("Server: Send frame failed");
-            } else {
-                printf("Frame# %ld sent\n", frame.ID);
-                next_seq_num++; // Move to next frame
-            }
+            next_seq_num++; // Move to the next frame (even if dropped)
         }
 
         // Receive ACK
