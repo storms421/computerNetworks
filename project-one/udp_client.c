@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
             }
 
             if (total_frame > 0) { // Check if valid total frame count received
-                printf("\n SERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
+                printf("\nSERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
                 fp_output = fopen("received_file_sw.txt", "wb"); // Open new file for writing received data
                 if (fp_output == NULL) {
                     perror("Error opening output file");

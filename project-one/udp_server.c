@@ -99,12 +99,15 @@ int main(int argc, char** argv) {
             f_size = st.st_size; // File size in bytes
             fp = fopen(file_name_recv, "rb"); // Open file for reading in binary mode
 
-            // Calculate total number of frames required to send entire file
-            stat(file_name_recv, &st); // Get file information (size, etc.)
-            f_size = st.st_size; // File size in bytes
+            // Calculate total number of frames required to send the entire file
+            long int total_frame = (f_size % BUF_SIZE) == 0 ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1;
             printf("File size: %ld bytes\n", f_size); // Debug
-            long int total_frame = (f_size % BUF_SIZE) == 0 ? (f_size / BUF_SIZE) : (f_size / BUF_SIZE) + 1; //Get the total number of frames/packets
             printf("Total number of packets that will be sent -> %ld\n", total_frame);
+
+            // Send `total_frame` to the client before starting the data transfer
+            if (sendto(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&c_addr, length) == -1) {
+                print_error("Server: Failed to send total frame count");
+            }
 
             // Calculate frames to drop based on drop percentage
             float drop_percent = atof(percent); // Convert drop percentage to a float
@@ -114,10 +117,10 @@ int main(int argc, char** argv) {
             printf("Received protocol type: '%s'\n", protocolType_recv); // Debug
 
             // Choose protocol based on client's request
-            if (strcmp(protocolType_recv, "1") == 0) { //Stop and Wait protocol if 1
+            if (strcmp(protocolType_recv, "1") == 0) { // Stop-and-Wait protocol if 1
                 printf("Stop and wait\n"); // Debug
-                stop_and_wait(s, &c_addr, length, fp, total_frame, testdrop, td); 
-            } else if (strcmp(protocolType_recv, "2") == 0) { //Go-Back-N protocol if 2
+                stop_and_wait(s, &c_addr, length, fp, total_frame, testdrop, td);
+            } else if (strcmp(protocolType_recv, "2") == 0) { // Go-Back-N protocol if 2
                 printf("Go Back [N]\n"); // Debug
                 go_back_n(s, &c_addr, length, fp, total_frame, testdrop, td);
             } else {
@@ -129,6 +132,7 @@ int main(int argc, char** argv) {
         } else {
             printf("Invalid Filename or File Not Accessible\n"); // File does not exist or is not readable
         }
+
     }
 
     close(s); // Close socket when server is terminated
