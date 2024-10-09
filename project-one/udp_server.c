@@ -201,11 +201,11 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
             }
         }
 
-        // Handle frame dropping simulation
         if (drop) {
-            printf("frame.id# %ld dropped (simulated loss)\n", frame.ID);
+            printf("Frame# %ld dropped (simulated loss)\n", frame.ID);
             drop_frame++; // Increment drop count
-            continue; // Simulate drop and retry sending the frame in the next iteration
+            i++; // Move to the next frame, simulating a drop
+            continue; // Continue to the next frame without sending
         }
 
         int retry_count = 0; // Reset retry count for each frame
@@ -213,7 +213,9 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
         while (retry_count <= resend_limit) {
             // Send frame to client
             if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
-                print_error("Server: Send frame failed");
+                perror("Server: Send frame failed");
+                retry_count++; // Increment retry count on send failure
+                continue; // Try sending again
             } else {
                 printf("Frame# %ld sent (retry count: %d)\n", frame.ID, retry_count);
                 if (retry_count > 0) {
@@ -221,24 +223,26 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
                 }
             }
 
-            // Reset length before each `recvfrom()` call
+            // Reset length before each recvfrom() call
             length = sizeof(*c_addr);
 
-            // Wait for acknowledgment from client
+            // Wait for acknowledgment from client with a timeout mechanism
+            struct timeval timeout;
+            timeout.tv_sec = 2; // 2 seconds timeout
+            timeout.tv_usec = 0;
+            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
             if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
-                perror("Server: Receive ack failed");  // Handle timeout or receive error
+                perror("Server: Receive ACK failed (possible timeout)");  // Handle timeout or receive error
                 retry_count++; // Increment retry count on timeout
             } else {
-                printf("Received ACK for frame# %d\n", ack_num);
-
-                // If acknowledgment matches the frame ID, move to the next frame
                 if (ack_num == frame.ID) {
                     printf("Frame# %ld acknowledged\n", frame.ID);
                     i++; // Move to the next frame
-                    break; // Exit retry loop
+                    break; // Exit retry loop as the frame was acknowledged
                 } else {
                     printf("Incorrect ACK received (ACK = %d). Resending frame# %ld...\n", ack_num, frame.ID);
-                    retry_count++;
+                    retry_count++; // Incorrect ACK, retry sending the frame
                 }
             }
 
