@@ -90,8 +90,9 @@ Key functionalities:
 - Receives file data in chunks and acknowledges packets.
 - Handles retransmissions in case of packet loss.
 
-Challenges:
-// insert
+CHALLENGES OVERCAME:
+========================
+Initially we were having trouble making the client and server connect, so we looked at the canvas and textbook resources for help. Later on, we were having trouble with implmenting the Stop and Wait and Go Back N protocols, but print messages for debugging errors was very useful, along with making sure the client and server acknowledge when something happens such as a transfer. One issue that plagued us for a while was that the requested file and the file that the client recieved were the same, so no changes in it were visible. This was fixed by making a new file for the server to place the requested data into. Right now, the server sends over some of the requested file, but is inconsistent with frame drops. Sometimes it will go all the way through, while other times it will get stuck somewhere and time out. The percentage of dropped frames works most of the time, as most percentages it will send the same amount of the file over, however it only sends part of the file rather than the entire thing. This is most likely due to some part of the text being outside of a given frame's limit, so it cuts off. 
 
 RESOURCES & DISCUSSIONS:
 ========================
@@ -101,4 +102,3 @@ Referenced Chapter 5 (ARQ algorithms) and Chapter 6 (Berkeley Sockets and exampl
 
 Canvas:
 Example code of udpclient.c and udpserver.c
-
