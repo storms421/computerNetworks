@@ -269,18 +269,17 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
     long int base = 1;  // Base of the window (first unacknowledged frame)
     long int next_seq_num = 1;  // Next sequence number to send
     int window_size = WINDOW_SIZE;  // Size of the Go-Back-N window
-    int resend_limit = 5;  // Retry limit for frame retransmission
-    int retry_count = 0;  // Retry count for frame retransmission
+    int resend_limit = 5;  // Retry limit for retransmission
+    int retry_count = 0;  // Retry count for retransmissions
 
-    // Loop to send all frames
     while (base <= total_frame) {
-        // Send all frames in the window
+        // Send frames within the current window
         while (next_seq_num < base + window_size && next_seq_num <= total_frame) {
             memset(&frame, 0, sizeof(frame));
             frame.ID = next_seq_num;
             frame.length = fread(frame.data, 1, BUF_SIZE, fp);
 
-            // Simulate packet loss based on drop percentage
+            // Simulate packet drop based on percentage
             int drop = 0;
             for (int j = 0; j < td; j++) {
                 if (frame.ID == testdrop[j]) {
@@ -301,30 +300,30 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
                 }
             }
 
-            next_seq_num++; // Move to the next frame (even if dropped)
+            next_seq_num++; // Move to the next frame
         }
 
-        // Receive ACK
+        // Receive ACK from the client
         length = sizeof(*c_addr);
         if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
             perror("Server: Receive ACK failed");
             retry_count++;
             if (retry_count >= resend_limit) {
-                printf("Error: Retry limit reached. Resending window starting from base frame #%ld.\n", base);
-                next_seq_num = base;  // Go back to base to resend frames
-                retry_count = 0;  // Reset retry count after resending window
+                printf("Retry limit reached. Resending window starting from base frame #%ld.\n", base);
+                next_seq_num = base;  // Resend from base if retry limit is reached
+                retry_count = 0;  // Reset retry count after resending the window
             }
         } else {
             printf("Received ACK for frame# %d\n", ack_num);
 
-            // If the received ACK acknowledges frames up to the base, slide the window
+            // Slide the window forward if we received an ACK for the base frame
             if (ack_num >= base) {
-                base = ack_num + 1;  // Slide the window forward
-                retry_count = 0;  // Reset retry count upon successful ACK
+                base = ack_num + 1;  // Move the base to the next frame
+                retry_count = 0;  // Reset retry count on successful ACK
             } else {
-                // If ACK is for a lower frame, something went wrong, and we need to resend
+                // If an out-of-order ACK is received, resend only the frames from the base
                 printf("Received out-of-order ACK for #%d. Resending from base frame# %ld.\n", ack_num, base);
-                next_seq_num = base;  // Resend the frames starting from base
+                next_seq_num = base;  // Start resending from the base
             }
         }
     }
