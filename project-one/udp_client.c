@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
      // Stop-and-Wait Protocol
     if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') {
         long int i = 1; // Frame counter starts at 1
-        socklen_t length = sizeof(from_addr); // Set length for recvfrom()
+        socklen_t length = sizeof(from_addr); 
 
         // Receive total number of frames from server
         if (recvfrom(s, &total_frame, sizeof(total_frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
 
         if (total_frame > 0) {
             printf("\nSERVER: Total number of frames to be transmitted: %ld frames\n", total_frame);
-            fp_output = fopen("received_file_sw.txt", "wb");
+            fp_output = fopen("received_file_sw.txt", "wb"); 
             if (fp_output == NULL) {
                 perror("Error opening output file");
                 exit(EXIT_FAILURE);
@@ -136,38 +136,40 @@ int main(int argc, char** argv) {
             int retry_limit = 5;
             int retry_count = 0;
 
+            // Loop to receive all frames
             while (i <= total_frame) {
-                memset(&frame, 0, sizeof(frame));
+                memset(&frame, 0, sizeof(frame)); 
 
+                // Try receiving frame from server
                 if (recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
                     perror("Client: Receive frame failed");
                     retry_count++;
 
                     if (retry_count >= retry_limit) {
                         printf("Warning: Retry limit reached while receiving frame #%ld. Skipping this frame.\n", i);
-                        retry_count = 0;  // Reset retry count and move on to the next frame
-                        i++;  // Skip to the next frame
+                        retry_count = 0;  // Reset retry count and move on (instead of terminating)
+                        i++;  // Move to next frame as an error recovery strategy
                         continue;
                     }
 
                     // Timeout occurred, resend previous ACK
-                    long ack_num = i - 1;  // Resend the last ACK if timeout occurs
+                    long ack_num = i - 1; 
                     if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                         perror("Client: Resend last ACK failed");
                     } else {
                         printf("Resent last ACK for frame #%ld due to timeout\n", ack_num);
                     }
-                    continue; // Retry receiving frame
+                    continue; 
                 }
 
-                retry_count = 0; // Reset retry count if frame is successfully received
+                retry_count = 0; 
 
                 printf("Received frame #%ld\n", frame.ID);
 
                 if (frame.ID == i) {
                     printf("Preparing to send ACK for frame ID: %ld\n", frame.ID);
 
-                    long ack_num = frame.ID;
+                    long ack_num = frame.ID; 
                     if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                         perror("Client: Send ACK failed");
                     } else {
@@ -179,7 +181,7 @@ int main(int argc, char** argv) {
 
                     i++;
                 } else {
-                    long ack_num = i - 1;  // Last successfully received frame
+                    long ack_num = i - 1; 
                     printf("Out of order frame received, resending ACK for #%ld\n", ack_num);
                     if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                         perror("Client: Resend ACK for out-of-order frame failed");
@@ -190,9 +192,10 @@ int main(int argc, char** argv) {
             fclose(fp_output);
             printf("Transmission Completed for Stop-and-Wait!\n");
         } else {
-            printf("File is empty or invalid.\n");
+            printf("File is empty or invalid.\n"); 
         }
     }
+
 
         // Go-Back-N Protocol
         if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') { //Check argument for Go-Bacn-N
