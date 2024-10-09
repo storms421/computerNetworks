@@ -176,15 +176,16 @@ int* generate_drops(int total_frame, float drop_percent) {
     return testdrop; // Return array of dropped frames
 }
 
+// Implementation of Stop-and-Wait ARQ protocol
 void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td) {
     struct frame_packet frame; // Frame structure for sending data
     int ack_num = 0, drop_frame = 0, resend_frame = 0; // Variables for tracking acknowledgments, drops, and resends
-    long int i;
+    long int i = 1;  // Frame counter starts at 1
     int resend_limit = 5;  // Maximum number of retries for each frame
     int retry_count = 0;   // Track how many times the frame has been resent
 
     // Loop through all frames to be sent
-    for (i = 1; i <= total_frame; ) {
+    while (i <= total_frame) {
         memset(&frame, 0, sizeof(frame)); // Clear frame structure
         frame.ID = i; // Set frame ID (Sequence Number)
         frame.length = fread(frame.data, 1, BUF_SIZE, fp); // Read data from file into frame
@@ -218,6 +219,9 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
                 print_error("Server: Send frame failed");
             } else {
                 printf("Frame# %ld sent (retry count: %d)\n", frame.ID, retry_count); // Print sent frame with retry info
+                if (retry_count > 0) {
+                    resend_frame++; // Increment resend count only for retries
+                }
             }
 
             // Reset length before each `recvfrom()` call
@@ -241,7 +245,6 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
             }
 
             retry_count++;
-            resend_frame++; // Increment resend count if we failed to get a correct ACK
 
             if (retry_count == resend_limit) {
                 printf("Error: Frame# %ld reached maximum resend attempts. Terminating transmission.\n", frame.ID);
@@ -260,7 +263,6 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
     printf("Total frame dropped: %i\n", drop_frame);
     printf("Total frame resent: %i\n", resend_frame);
 }
-
 
 // Implementation of Go-Back-N ARQ protocol
 void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td) {
