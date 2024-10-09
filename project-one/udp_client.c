@@ -135,6 +135,8 @@ int main(int argc, char** argv) {
                 printf("Expecting to receive %ld total frames\n", total_frame); // Debug
 
                 while (i <= total_frame) {
+                    printf("Receiving frame #%ld of %ld\n", i, total_frame); //Debug
+
                     // Clear previous frame
                     memset(&frame, 0, sizeof(frame));
 
