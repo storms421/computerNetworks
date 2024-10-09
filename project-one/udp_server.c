@@ -273,10 +273,10 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
     int retry_count = 0;  // Retry count for retransmissions
 
     while (base <= total_frame) {
-        // Send frames within the current window, but prioritize retransmitting the base frame
-        if (next_seq_num < base + window_size && next_seq_num == base) {
+        // Send frames within the current window
+        while (next_seq_num < base + window_size && next_seq_num <= total_frame) {
             memset(&frame, 0, sizeof(frame));
-            frame.ID = base;  // Always prioritize resending the base frame first
+            frame.ID = next_seq_num;  // Frame ID starts from next_seq_num
             frame.length = fread(frame.data, 1, BUF_SIZE, fp);
 
             // Simulate packet drop based on percentage
@@ -299,7 +299,7 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
                     printf("Frame# %ld sent\n", frame.ID);
                 }
             }
-            resend_frame++;
+            next_seq_num++;
         }
 
         // Receive ACK from the client
