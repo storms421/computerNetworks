@@ -246,6 +246,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
                 }
             }
 
+            // If retry limit is reached, skip to the next frame
             if (retry_count > resend_limit) {
                 printf("Error: Frame# %ld reached maximum resend attempts. Continuing with the next frame.\n", frame.ID);
                 retry_count = 0;  // Reset retry count before moving to the next frame
@@ -254,6 +255,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
             }
         }
     }
+
 
     // Print frame data after the loop is complete
     printf("\nTotal frames attempted to be sent: %ld\n", total_frame);
