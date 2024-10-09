@@ -268,7 +268,7 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
     int ack_num = -1, drop_frame = 0, resend_frame = 0; // Variables for tracking acknowledgments, drops, and resends
     long int base = 1;  // Base of the window (first unacknowledged frame)
     long int next_seq_num = 1;  // Next sequence number to send
-    int window_size = 4;  // Size of the Go-Back-N window
+    int window_size = WINDOW_SIZE;  // Size of the Go-Back-N window
     int resend_limit = 5;  // Retry limit per frame
     int retry_count = 0;  // Retry count for resend attempts
 
@@ -319,6 +319,10 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
                 // Slide window to just beyond the last acknowledged frame
                 base = ack_num + 1;
                 retry_count = 0;  // Reset retry count upon successful ACK
+            } else {
+                // Go back and resend from the base if the ack received is lower than base
+                printf("Received out-of-order ACK. Resending from base frame# %ld.\n", base);
+                next_seq_num = base;
             }
         }
     }

@@ -275,7 +275,7 @@ int main(int argc, char** argv) {
                 printf("File is empty or invalid.\n");
             }
         }
-    }
+
 
     close(s);
     exit(EXIT_SUCCESS);
