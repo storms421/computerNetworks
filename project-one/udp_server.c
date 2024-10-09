@@ -182,7 +182,6 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
     int ack_num = 0, drop_frame = 0, resend_frame = 0; // Variables for tracking acknowledgments, drops, and resends
     long int i = 1;  // Frame counter starts at 1
     int resend_limit = 5;  // Maximum number of retries for each frame
-    int retry_count = 0;   // Track how many times the frame has been resent
 
     // Loop through all frames to be sent
     while (i <= total_frame) {
@@ -204,65 +203,63 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
             }
         }
 
-        // If frame is to be dropped, simulate the drop and then retry sending it
-        if (drop && retry_count == 0) {
-            printf("frame.id# %ld \t dropped\n", frame.ID); // Print dropped frame
+        // Handle frame dropping
+        if (drop) {
+            printf("frame.id# %ld dropped (simulated loss)\n", frame.ID);
             drop_frame++; // Increment drop count
-            retry_count++; // Increment retry count to indicate a first drop
-            continue; // Move to retry sending the same frame
+            drop = 0; // Reset drop indicator to avoid multiple drops for this frame
+            continue; // Skip sending this frame to simulate packet loss
         }
 
         // Resend loop in case acknowledgment fails
-        while (retry_count < resend_limit) {
+        int retry_count = 0;
+        while (retry_count <= resend_limit) {
             // Send frame to client
             if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
                 print_error("Server: Send frame failed");
             } else {
-                printf("Frame# %ld sent (retry count: %d)\n", frame.ID, retry_count); // Print sent frame with retry info
+                printf("Frame# %ld sent (retry count: %d)\n", frame.ID, retry_count);
                 if (retry_count > 0) {
-                    resend_frame++; // Increment resend count only for retries
+                    resend_frame++; // Increment resend count for actual retries
                 }
             }
 
             // Reset length before each `recvfrom()` call
-            length = sizeof(*c_addr); // Reset length to sizeof(sockaddr_in)
+            length = sizeof(*c_addr);
 
             // Wait for acknowledgment from client
             if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
                 perror("Server: Receive ack failed");  // Handle timeout or receive error
+                retry_count++; // Increment retry count on timeout
             } else {
-                printf("Received ACK for frame# %d\n", ack_num); // Print received acknowledgment
+                printf("Received ACK for frame# %d\n", ack_num);
 
                 // If acknowledgment matches the frame ID, move to the next frame
                 if (ack_num == frame.ID) {
-                    printf("Frame# %ld acknowledged\n", frame.ID); // Print acknowledged frame
-                    retry_count = 0; // Reset retry count for next frame
+                    printf("Frame# %ld acknowledged\n", frame.ID);
+                    retry_count = 0; // Reset retry count for the next frame
                     i++; // Move to the next frame
-                    break; // Break retry loop and send the next frame
+                    break; // Exit retry loop to move to the next frame
                 } else {
                     printf("Incorrect ACK received (ACK = %d). Resending frame# %ld...\n", ack_num, frame.ID);
+                    retry_count++;
                 }
             }
 
-            retry_count++;
-
-            if (retry_count == resend_limit) {
-                printf("Error: Frame# %ld reached maximum resend attempts. Terminating transmission.\n", frame.ID);
-                break; // If retry limit is reached, exit the loop
+            if (retry_count > resend_limit) {
+                printf("Error: Frame# %ld reached maximum resend attempts. Continuing with the next frame.\n", frame.ID);
+                i++; // Move to the next frame even if retry limit is reached
+                break;
             }
-        }
-
-        // If the maximum retries were reached, terminate transmission
-        if (retry_count == resend_limit) {
-            break;
         }
     }
 
     // Print frame data after the loop is complete
-    printf("\nTotal frame sent: %ld\n", total_frame);
-    printf("Total frame dropped: %i\n", drop_frame);
-    printf("Total frame resent: %i\n", resend_frame);
+    printf("\nTotal frames attempted to be sent: %ld\n", total_frame);
+    printf("Total frames dropped: %i\n", drop_frame);
+    printf("Total frames resent: %i\n", resend_frame);
 }
+
 
 // Implementation of Go-Back-N ARQ protocol
 void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td) {
