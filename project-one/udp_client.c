@@ -166,9 +166,10 @@ int main(int argc, char** argv) {
 
                     // If the frame ID is what we expect
                     if (frame.ID == i) {
-                        printf("Preparing to send ACK for frame ID: %ld\n", frame.ID); // Debug
-                        // Send ACK to the server after receiving the correct frame
                         long ack_num = frame.ID; // Correct ACK for received frame
+                        printf("Preparing to send ACK for frame ID: %ld\n", frame.ID); // Debug
+
+                        // Send ACK to the server after receiving the correct frame
                         if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                             perror("Client: Send ACK");
                         } else {

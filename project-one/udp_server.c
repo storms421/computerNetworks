@@ -216,6 +216,9 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
                 printf("Frame# %ld sent\n", frame.ID); // Print sent frame
             }
 
+            // Reset length before each `recvfrom()` call
+            length = sizeof(*c_addr); // Reset length to sizeof(sockaddr_in)
+
             // Wait for acknowledgment from client
             if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
                 perror("Server: Receive ack failed");  // Handle timeout or receive error
@@ -246,7 +249,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
         }
     }
 
-    //Print frame data
+    // Print frame data after the loop is complete
     printf("\nTotal frame sent: %ld\n", total_frame);
     printf("Total frame dropped: %i\n", drop_frame);
     printf("Total frame resent: %i\n", resend_frame);
