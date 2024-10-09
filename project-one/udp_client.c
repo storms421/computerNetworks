@@ -135,61 +135,57 @@ int main(int argc, char** argv) {
 
                 int retry_limit = 5;
                 int retry_count = 0;
+    
+            while (i <= total_frame) {
+                // Clear previous frame
+                memset(&frame, 0, sizeof(frame));
 
-                while (i <= total_frame) {
+                // Try receiving frame from server
+                if (recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
+                    perror("Client: Receive frame");
+                    retry_count++;
                     if (retry_count >= retry_limit) {
                         printf("Error: Retry limit reached while receiving frame #%ld. Aborting transmission.\n", i);
                         fclose(fp_output);
                         exit(EXIT_FAILURE);
                     }
+                    // Timeout occurred, resend previous ACK
+                    long ack_num = i - 1;  // Resend the last ACK if timeout occurs
+                    if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                        perror("Client: Resend last ACK");
+                    }
+                    continue; // Retry receiving frame
+                }
 
-                    printf("Receiving frame #%ld of %ld\n", i, total_frame); // Debug
+                retry_count = 0; // Reset retry count if frame is successfully received
 
-                    // Clear previous frame
-                    memset(&frame, 0, sizeof(frame));
+                printf("Received frame #%ld\n", frame.ID);
 
-                    // Try receiving frame from server
-                    if (recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
-                        perror("Client: Receive frame");
-                        retry_count++;  // Increment retry count for timeout
-                        // Timeout occurred, resend previous ACK
-                        long ack_num = i - 1;  // Resend the last ACK if timeout occurs
-                        if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
-                            perror("Client: Resend last ACK");
-                        }
-                        continue; // Retry receiving frame
+                // If the frame ID is what we expect
+                if (frame.ID == i) {
+                    printf("Preparing to send ACK for frame ID: %ld\n", frame.ID); // Debug
+                    // Send ACK to the server after receiving the correct frame
+                    long ack_num = frame.ID; // Correct ACK for received frame
+                    if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                        perror("Client: Send ACK");
+                    } else {
+                        printf("Sent ACK for frame #%ld\n", ack_num);
                     }
 
-                    retry_count = 0; // Reset retry count if frame is successfully received
+                    printf("Writing %ld bytes of data for frame ID: %ld\n", frame.length, frame.ID); // Debug
 
-                    printf("Received frame #%ld\n", frame.ID);
-
-                    // If the frame ID is what we expect
-                    if (frame.ID == i) {
-                        long ack_num = frame.ID; // Correct ACK for received frame
-                        printf("Preparing to send ACK for frame ID: %ld\n", frame.ID); // Debug
-
-                        // Send ACK to the server after receiving the correct frame
-                        if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
-                            perror("Client: Send ACK");
-                        } else {
-                            printf("Sent ACK for frame #%ld\n", ack_num);
-                        }
-
-                        printf("Writing %ld bytes of data for frame ID: %ld\n", frame.length, frame.ID); // Debug
-
-                        // Write received data to the output file
-                        fwrite(frame.data, 1, frame.length, fp_output);
-                        i++;  // Increment frame counter
-                    } else {
-                        // If we received an out-of-order frame, resend the last correct ACK
-                        long ack_num = i - 1;  // Last successfully received frame
-                        printf("Out of order frame received, resending ACK for #%ld\n", ack_num);
-                        if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
-                            perror("Client: Resend ACK for out-of-order frame");
-                        }
+                    // Write received data to the output file
+                    fwrite(frame.data, 1, frame.length, fp_output);
+                    i++;  // Increment frame counter
+                } else {
+                    // If we received an out-of-order frame, resend the last correct ACK
+                    long ack_num = i - 1;  // Last successfully received frame
+                    printf("Out of order frame received, resending ACK for #%ld\n", ack_num);
+                    if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
+                        perror("Client: Resend ACK for out-of-order frame");
                     }
                 }
+            }
 
                 fclose(fp_output); // Close output file
                 printf("Transmission Completed for Stop-and-Wait!\n");
