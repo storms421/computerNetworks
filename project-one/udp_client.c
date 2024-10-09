@@ -15,6 +15,7 @@
 
 #define BUF_SIZE 4096   // Maximum buffer size for data in a frame
 #define SERVER_PORT 2226 // Fixed server port number
+long int total_frame = 0; // Total number of frames to receive
 
 // Structure for data packets
 struct frame_packet {
@@ -51,7 +52,6 @@ int main(int argc, char** argv) {
     int s;                                     // Socket descriptor
     FILE* fp_input;                            // File pointer for input file
     FILE* fp_output;                           // File pointer for received file
-    long int total_frame = 0;                  // Total number of frames to receive
     long int i = 0;                            // Frame counter
 
     // Initialize buffers to zero
@@ -114,7 +114,6 @@ int main(int argc, char** argv) {
 
         // Stop-and-Wait Protocol
         if (strcmp(protocolType, "1") == 0 && file_name[0] != '\0') { //Check argument for Stop-and-Wait
-            long int total_frame = 0; // Total number of frames to receive
             long int i = 1; // Frame counter starts at 1, since server sends frame# 1 first
             socklen_t length = sizeof(from_addr);  // Changed to socklen_t
 
@@ -134,8 +133,17 @@ int main(int argc, char** argv) {
 
                 printf("Expecting to receive %ld total frames\n", total_frame); // Debug
 
+                int retry_limit = 5;
+                int retry_count = 0;
+
                 while (i <= total_frame) {
-                    printf("Receiving frame #%ld of %ld\n", i, total_frame); //Debug
+                    if (retry_count >= retry_limit) {
+                        printf("Error: Retry limit reached while receiving frame #%ld. Aborting transmission.\n", i);
+                        fclose(fp_output);
+                        exit(EXIT_FAILURE);
+                    }
+
+                    printf("Receiving frame #%ld of %ld\n", i, total_frame); // Debug
 
                     // Clear previous frame
                     memset(&frame, 0, sizeof(frame));
@@ -143,6 +151,7 @@ int main(int argc, char** argv) {
                     // Try receiving frame from server
                     if (recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
                         perror("Client: Receive frame");
+                        retry_count++;  // Increment retry count for timeout
                         // Timeout occurred, resend previous ACK
                         long ack_num = i - 1;  // Resend the last ACK if timeout occurs
                         if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
@@ -150,6 +159,8 @@ int main(int argc, char** argv) {
                         }
                         continue; // Retry receiving frame
                     }
+
+                    retry_count = 0; // Reset retry count if frame is successfully received
 
                     printf("Received frame #%ld\n", frame.ID);
 
@@ -181,6 +192,7 @@ int main(int argc, char** argv) {
 
                 fclose(fp_output); // Close output file
                 printf("Transmission Completed for Stop-and-Wait!\n");
+
             } else {
                 printf("File is empty or invalid.\n"); // Handle case of empty or invalid file
             }
