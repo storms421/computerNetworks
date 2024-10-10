@@ -274,13 +274,11 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
     int resend_limit = 5;  // Retry limit for retransmission
     int retry_count = 0;  // Retry count for retransmissions
 
-    // Seed the random number generator
-    srand(time(0));
-
     while (base <= total_frame) {
         // Send frames within current window
         while (next_seq_num < base + window_size && next_seq_num <= total_frame) {
             memset(&frame, 0, sizeof(frame));
+            fseek(fp, (next_seq_num - 1) * BUF_SIZE, SEEK_SET); // Set file pointer to the correct frame data
             frame.ID = next_seq_num;  // Frame ID starts from next_seq_num
             frame.length = fread(frame.data, 1, BUF_SIZE, fp);
 
@@ -306,10 +304,24 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
             perror("Server: Receive ACK failed");
             retry_count++;
             if (retry_count >= resend_limit) {
-                printf("Retry limit reached. Resending base frame #%ld.\n", base);
-                next_seq_num = base;  // Resend from base if retry limit is reached
+                printf("Retry limit reached. Resending frames from base frame #%ld.\n", base);
+
+                // Resend all unacknowledged frames starting from base to the current next_seq_num
+                for (long int i = base; i < next_seq_num && i <= total_frame; i++) {
+                    memset(&frame, 0, sizeof(frame));
+                    fseek(fp, (i - 1) * BUF_SIZE, SEEK_SET); // Reposition file pointer
+                    frame.ID = i;
+                    frame.length = fread(frame.data, 1, BUF_SIZE, fp);
+
+                    // Resend frame
+                    if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
+                        perror("Server: Resend frame failed");
+                    } else {
+                        printf("Resending frame# %ld\n", frame.ID);
+                        resend_frame++;
+                    }
+                }
                 retry_count = 0;  // Reset retry count after resending window
-                resend_frame++;
             }
         } else {
             printf("Received ACK for frame# %d\n", ack_num);
@@ -317,7 +329,6 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
             // Slide window forward if we received an ACK for base frame
             if (ack_num >= base) {
                 base = ack_num + 1;  // Move base to next frame
-                next_seq_num = base;  // Ensure we prioritize resending base frame next
                 retry_count = 0;  // Reset retry count on successful ACK
             }
         }
