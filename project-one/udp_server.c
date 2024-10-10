@@ -274,6 +274,12 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
     int resend_limit = 5;  // Retry limit for retransmission
     int retry_count = 0;  // Retry count for retransmissions
 
+    // Set up timeout for recvfrom (to trigger retransmission after timeout)
+    struct timeval timeout;
+    timeout.tv_sec = 2;  // 2-second timeout
+    timeout.tv_usec = 0;  // No microseconds
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
     while (base <= total_frame) {
         // Send frames within current window
         while (next_seq_num < base + window_size && next_seq_num <= total_frame) {
@@ -301,28 +307,28 @@ void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, in
         // Receive ACK from client
         length = sizeof(*c_addr);
         if (recvfrom(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)c_addr, &length) == -1) {
-            perror("Server: Receive ACK failed");
+            // Timeout occurred (no ACK received within the specified time)
+            perror("Server: Receive ACK failed (timeout)");
+            printf("Timeout occurred, retransmitting frames starting from base frame #%ld\n", base);
             retry_count++;
-            if (retry_count >= resend_limit) {
-                printf("Retry limit reached. Resending frames from base frame #%ld.\n", base);
+            
+            // Retransmit all unacknowledged frames starting from base
+            for (long int i = base; i < next_seq_num && i <= total_frame; i++) {
+                memset(&frame, 0, sizeof(frame));
+                fseek(fp, (i - 1) * BUF_SIZE, SEEK_SET); // Reposition file pointer
+                frame.ID = i;
+                frame.length = fread(frame.data, 1, BUF_SIZE, fp);
 
-                // Resend all unacknowledged frames starting from base to the current next_seq_num
-                for (long int i = base; i < next_seq_num && i <= total_frame; i++) {
-                    memset(&frame, 0, sizeof(frame));
-                    fseek(fp, (i - 1) * BUF_SIZE, SEEK_SET); // Reposition file pointer
-                    frame.ID = i;
-                    frame.length = fread(frame.data, 1, BUF_SIZE, fp);
-
-                    // Resend frame
-                    if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
-                        perror("Server: Resend frame failed");
-                    } else {
-                        printf("Resending frame# %ld\n", frame.ID);
-                        resend_frame++;
-                    }
+                // Resend frame
+                if (sendto(s, &frame, sizeof(frame), 0, (struct sockaddr*)c_addr, length) == -1) {
+                    perror("Server: Resend frame failed");
+                } else {
+                    printf("Resending frame# %ld\n", frame.ID);
+                    resend_frame++;
                 }
-                retry_count = 0;  // Reset retry count after resending window
             }
+
+            retry_count = 0;  // Reset retry count after retransmission
         } else {
             printf("Received ACK for frame# %d\n", ack_num);
 
