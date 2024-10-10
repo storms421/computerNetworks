@@ -94,11 +94,13 @@ CHALLENGES OVERCAME:
 ========================
 - Initial Connection Setup: We initially struggled to establish a reliable connection between the client and server. We used the  resources provided to us, textbook and example code (udpclient.c and udpserver.c), which helped us resolve connectivity issues and more.
 
-- Protocol Implementation: Implementing the Stop and Wait and Go Back N protocols presented challenges. We leveraged print messages for debugging, ensuring communication between the client and server. This approach helped with identifying and resolving protocol-related issues.
+- Protocol Implementation: Implementing the Stop and Wait and Go Back N protocols presented challenges. We created print messages for debugging, ensuring communication between the client and server. This approach helped with identifying and resolving protocol-related issues.
 
 - File Transfer Integrity: One persistent issue was ensuring the integrity of file transfers. Initially, the client received files that didn't reflect requested changes. We addressed this by modifying our server to create a new file for each requested transfer, ensuring accurate data delivery.
 
-- Frame Dropping/Mixup: Currently, our server intermittently experiences frame drops during file transmissions. While the overall percentage of dropped frames remains consistent, some files are incompletely transmitted due to text exceeding frame size limits. We are actively working to optimize this process for smoother file transfers. This is mostly in the GBN part of the code where the files aren't being sent properly and the server and client are dropping the frames they each need.
+- Frame Dropping/Mixup: Our server had irregularity experiences frame drops during file transmissions. While the overall percentage of dropped frames remains consistent, some files were incompletely transmitted due to text exceeding frame size limits. This happened in both SW and GBN parts.
+
+- Exiting: After running GBN, the server automatically terminates without exit prompt. This problem has not been solved which means the server needs to be re-launched each time the client wants to run.
 
 RESOURCES & DISCUSSIONS:
 ========================

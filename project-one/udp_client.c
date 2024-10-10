@@ -37,28 +37,28 @@ int main(int argc, char** argv) {
     }
 
     struct sockaddr_in send_addr, from_addr; // Socket address structures for server and client
-    struct frame_packet frame;                 // Structure for receiving packets
-    struct timeval t_out = { 10, 0 };           // 10-second timeout for receiving data
-    struct hostent* h;                         // Host information structure
-    char protocolType_send[50];                // Buffer for user input regarding protocol, file name, and drop percentage
-    char file_name[20];                        // Buffer for file name to receive
-    char protocolType[10];                     // Protocol type (1 for Stop-and-Wait, 2 for Go-Back-N)
-    char percent[10];                          // Drop percentage for packet simulation
-    char ack_send[4] = "ACK";                  // Acknowledgment message to send to server
-    int ack_num;                                // ACK number received from server
-    int expected_ack = 1;                       // Expected ACK number from server
-    long int* acked;                            // Dynamic array to track acknowledged frames
+    struct frame_packet frame; // Structure for receiving packets
+    struct timeval t_out = { 10, 0 }; // 10-second timeout for receiving data
+    struct hostent* h; // Host information structure
+    char protocolType_send[50]; // Buffer for user input regarding protocol, file name, and drop percentage
+    char file_name[20]; // Buffer for file name to receive
+    char protocolType[10]; // Protocol type (1 for Stop-and-Wait, 2 for Go-Back-N)
+    char percent[10]; // Drop percentage for packet simulation
+    char ack_send[4] = "ACK"; // Acknowledgment message to send to server
+    int ack_num; // ACK number received from server
+    int expected_ack = 1; // Expected ACK number from server
+    long int* acked; // Dynamic array to track acknowledged frames
     socklen_t length = sizeof(from_addr); // Use socklen_t for recvfrom
-    int s;                                     // Socket descriptor
-    FILE* fp_input;                            // File pointer for input file
-    FILE* fp_output;                           // File pointer for received file
-    long int i = 0;                            // Frame counter
+    int s; // Socket descriptor
+    FILE* fp_input; // File pointer for input file
+    FILE* fp_output; // File pointer for received file
+    long int i = 0; // Frame counter
 
     // Initialize buffers to zero
     memset(&send_addr, 0, sizeof(send_addr));
     memset(&from_addr, 0, sizeof(from_addr));
 
-    h = gethostbyname(argv[1]); //Get the hostname from argument
+    h = gethostbyname(argv[1]); //Get hostname from argument
     if (!h) {
         print_error("gethostbyname failed"); // Handle DNS lookup failure
     }
@@ -73,15 +73,15 @@ int main(int argc, char** argv) {
         print_error("Client: Socket"); 
     }
 
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); //Sets option specified by SO_RCVTIMEO at level SOL_SOCKET to value of t_out 
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char*)&t_out, sizeof(struct timeval)); // Sets option specified by SO_RCVTIMEO at level SOL_SOCKET to value of t_out 
 
     for (;;) { 
-        //Initializing buffers to 0
+        // Initializing buffers to 0
         memset(protocolType_send, 0, sizeof(protocolType_send));
         memset(protocolType, 0, sizeof(protocolType));
         memset(file_name, 0, sizeof(file_name));
 
-        //Prompt the user for input
+        // Prompt user for input
         printf("\n -----");
         printf("\n Menu");
         printf("\n -----");
@@ -94,20 +94,20 @@ int main(int argc, char** argv) {
         printf("\n INPUT: ");
         scanf(" %[^\n]%*c", protocolType_send); 
 
-        //Exit command to stop server
+        // Check exit command to stop server
         if (strcmp(protocolType_send, "exit") == 0) {
             printf("Sending exit command to server...\n");
             sendto(s, "EXIT", sizeof("EXIT"), 0, (struct sockaddr*)&send_addr, sizeof(send_addr));
             break; 
         }
 
-        //Make sure the arguments are correct
+        // Make sure arguments are correct
         if (sscanf(protocolType_send, "%s %s %s", protocolType, file_name, percent) != 3) {
             fprintf(stderr, "Failed to parse input correctly\n");
             continue; 
         }
 
-        //Make sure the client can send properly
+        // Make sure client can send properly
         if (sendto(s, protocolType_send, sizeof(protocolType_send), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
             print_error("Client: Send"); 
         }
@@ -148,13 +148,13 @@ int main(int argc, char** argv) {
 
                         if (retry_count >= retry_limit) {
                             printf("Warning: Retry limit reached while receiving frame #%ld. Skipping this frame.\n", i);
-                            retry_count = 0;  // Reset retry count and move on (instead of terminating)
+                            retry_count = 0;  // Reset retry count and move on instead of terminating
                             i++;  // Move to next frame as an error recovery strategy
                             continue;
                         }
 
                         // Timeout occurred, resend previous ACK
-                        long ack_num = i - 1;  // Resend the last ACK if timeout occurs
+                        long ack_num = i - 1;  // Resend last ACK if timeout occurs
                         if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                             perror("Client: Resend last ACK failed");
                         } else {
@@ -168,11 +168,11 @@ int main(int argc, char** argv) {
 
                     printf("Received frame #%ld\n", frame.ID);
 
-                    // If the frame ID is what we expect
+                    // Check if frame ID is what is expected
                     if (frame.ID == i) {
                         printf("Preparing to send ACK for frame ID: %ld\n", frame.ID); // Debug
 
-                        // Send ACK to the server after receiving the correct frame
+                        // Send ACK to server after receiving correct frame
                         long ack_num = frame.ID; // Correct ACK for received frame
                         if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                             perror("Client: Send ACK failed");
@@ -180,14 +180,14 @@ int main(int argc, char** argv) {
                             printf("Sent ACK for frame #%ld\n", ack_num);
                         }
 
-                        // Write received data to the output file
+                        // Write received data to output file
                         fwrite(frame.data, 1, frame.length, fp_output);
                         printf("Writing %ld bytes of data for frame ID: %ld\n", frame.length, frame.ID); // Debug
 
-                        // Move to the next frame
+                        // Move to next frame
                         i++;
                     } else {
-                        // If we received an out-of-order frame, resend the last correct ACK
+                        // If we received an out-of-order frame, resend last correct ACK
                         long ack_num = i - 1;  // Last successfully received frame
                         printf("Out of order frame received, resending ACK for #%ld\n", ack_num);
                         if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
@@ -206,7 +206,7 @@ int main(int argc, char** argv) {
 
         // Go-Back-N Protocol
         if (strcmp(protocolType, "2") == 0 && file_name[0] != '\0') {
-            long int base = 1; // Base of the expected frames
+            long int base = 1; // Base of expected frames
             socklen_t length = sizeof(from_addr); // Set length for recvfrom()
 
             // Receive total number of frames from server
@@ -231,21 +231,21 @@ int main(int argc, char** argv) {
                     // Receive frame from server
                     if (recvfrom(s, &frame, sizeof(frame), 0, (struct sockaddr*)&from_addr, &length) == -1) {
                         perror("Client: Receive frame failed");
-                        // Timeout occurred, resend ACK for the last successfully received frame
-                        long ack_num = base - 1;  // Send ACK for the last correctly received frame
+                        // Timeout occurred, resend ACK for last successfully received frame
+                        long ack_num = base - 1;  // Send ACK for last correctly received frame
                         if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                             perror("Client: Resend ACK failed");
                         } else {
                             printf("Resent last ACK for frame #%ld due to timeout\n", ack_num);
                         }
-                        continue; // Retry receiving the next frame
+                        continue; // Retry receiving next frame
                     }
 
                     printf("Received frame #%ld\n", frame.ID);
 
-                    // If the frame ID is what we expect
+                    // Check if frame ID is what is expected
                     if (frame.ID == base) {
-                        // Send ACK for the received frame
+                        // Send ACK for received frame
                         long ack_num = frame.ID;
                         if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
                             perror("Client: Send ACK failed");
@@ -253,14 +253,14 @@ int main(int argc, char** argv) {
                             printf("Sent ACK for frame #%ld\n", ack_num);
                         }
 
-                        // Write received data to the output file
+                        // Write received data to output file
                         fwrite(frame.data, 1, frame.length, fp_output);
                         printf("Writing %ld bytes of data for frame ID: %ld\n", frame.length, frame.ID);
 
-                        // Move to the next expected frame
+                        // Move to next expected frame
                         base++;
                     } else {
-                        // If we received an out-of-order frame, resend the last correct ACK
+                        // If we received an out-of-order frame, resend last correct ACK
                         long ack_num = base - 1;  // Last successfully received frame
                         printf("Out of order frame received, resending ACK for #%ld\n", ack_num);
                         if (sendto(s, &ack_num, sizeof(ack_num), 0, (struct sockaddr*)&send_addr, sizeof(send_addr)) == -1) {
