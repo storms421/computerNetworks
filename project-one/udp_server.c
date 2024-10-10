@@ -122,7 +122,9 @@ int main(int argc, char** argv) {
                 stop_and_wait(s, &c_addr, length, fp, total_frame, testdrop, td);
             } else if (strcmp(protocolType_recv, "2") == 0) { // Go-Back-N protocol if 2
                 printf("Go Back [N]\n"); // Debug
-                go_back_n(s, &c_addr, length, fp, total_frame, testdrop, td);
+                // Convert the drop percentage to a probability (as a float between 0 and 1)
+                float drop_probability = drop_percent / 100.0;
+                go_back_n(s, &c_addr, length, fp, total_frame, drop_probability);
             } else {
                 printf("Invalid Protocol Type\n"); // Invalid protocol type received
             }
@@ -263,7 +265,7 @@ void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp
 }
 
 // Implementation of Go-Back-N ARQ protocol
-void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, float drop_probability) {
+void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, float drop_probability); {
     struct frame_packet frame; // Frame structure for sending data
     int ack_num = -1, drop_frame = 0, resend_frame = 0; // Variables for tracking acknowledgments, drops, and resends
     long int base = 1;  // Base of window (first unacknowledged frame)
