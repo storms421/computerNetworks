@@ -29,7 +29,7 @@ struct frame_packet {
 //Function prototypes
 void print_error(char* msg);
 void stop_and_wait(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td);
-void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, int* testdrop, int td);
+void go_back_n(int s, struct sockaddr_in* c_addr, socklen_t length, FILE* fp, int total_frame, float drop_probability);
 int* generate_drops(int total_frame, float drop_percent); // Generates which frames to drop based on drop percentage
 
 int main(int argc, char** argv) {
